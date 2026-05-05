@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Django/local files
+.env
+.env.*
+!.env.example
+db.sqlite3
+*.sqlite3
+media/
+staticfiles/
+
+# Uploaded/imported local data
+*.csv
+*.xls
+*.xlsx
+
+# Editor/OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local assistant/session files
+.codex
+
+# Backup copies
+* copy.py
+*.bak
+*.orig

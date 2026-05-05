@@ -1,0 +1,17 @@
+Django==5.2.13
+djangorestframework==3.17.1
+django-cors-headers==4.9.0
+drf-spectacular==0.28.0
+django-filter==24.3
+
+psycopg2-binary==2.9.11
+python-decouple==3.8
+requests==2.31.0
+PyJWT==2.12.1
+cryptography==46.0.3
+pypdf==6.10.2
+Pillow==10.2.0
+
+asgiref==3.11.1
+sqlparse==0.5.5
+pytz==2024.1
