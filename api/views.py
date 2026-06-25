@@ -1426,6 +1426,14 @@ class DashboardStatsView(APIView):
             .order_by('mes')
         )
 
+        atualizacoes_por_mes = (
+            Cidadao.objects
+            .extra(select={'mes': "to_char(atualizado_em, 'YYYY-MM')"})
+            .values('mes')
+            .annotate(total=Count('id'))
+            .order_by('mes')
+        )
+
         beneficios_por_status = Beneficiario.objects.values('status').annotate(
             total=Count('id')
         )
@@ -1462,6 +1470,7 @@ class DashboardStatsView(APIView):
             'atualizados_hoje': atualizados_hoje,
             'cidadaos_por_status': list(cidadaos_por_status),
             'cidadaos_por_mes': list(cidadaos_por_mes),
+            'atualizacoes_por_mes': list(atualizacoes_por_mes),
             'beneficios_por_status': list(beneficios_por_status),
             'cidadaos_por_genero': list(cidadaos_por_genero),
             'atualizacao_por_bairro': list(atualizacao_por_bairro),
