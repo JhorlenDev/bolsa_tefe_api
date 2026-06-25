@@ -32,7 +32,7 @@ class HasRequiredRole(BasePermission):
             roles = getattr(request, 'jwt_roles', [])
             roles_source = 'request.jwt_roles' if roles else roles_source
 
-        allowed = required_role in roles
+        allowed = required_role in roles or 'USER-BOLSA-TEFE-ADMIN' in roles
         log_data = {
             'path': request.path,
             'method': request.method,

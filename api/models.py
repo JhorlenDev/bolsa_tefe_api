@@ -1,3 +1,4 @@
+import hashlib
 import uuid
 from django.db import models
 from django.contrib.auth import get_user_model
@@ -60,12 +61,22 @@ class KeycloakUserData(models.Model):
 
 
 class Cidadao(BaseSincronizacao):
+    STATUS_ATUALIZACAO_PENDENTE = 'PENDENTE'
+    STATUS_ATUALIZACAO_ATUALIZADO = 'ATUALIZADO'
+    STATUS_ATUALIZACAO_DESATUALIZADO = 'DESATUALIZADO'
+    STATUS_ATUALIZACAO_CHOICES = [
+        (STATUS_ATUALIZACAO_PENDENTE, 'Pendente'),
+        (STATUS_ATUALIZACAO_ATUALIZADO, 'Atualizado'),
+        (STATUS_ATUALIZACAO_DESATUALIZADO, 'Desatualizado'),
+    ]
+
     ESTADO_CIVIL_CHOICES = [
         ('SOLTEIRO', 'Solteiro'),
         ('CASADO', 'Casado'),
         ('DIVORCIADO', 'Divorciado'),
         ('VIUVO', 'Viúvo'),
         ('UNIAO_ESTAVEL', 'União estável'),
+        ('NAO_INFORMADO', 'Não informado'),
     ]
 
     nome = models.CharField(max_length=200, db_index=True)
@@ -94,6 +105,12 @@ class Cidadao(BaseSincronizacao):
         blank=True,
         default='',
     )
+    status_atualizacao = models.CharField(
+        max_length=20,
+        choices=STATUS_ATUALIZACAO_CHOICES,
+        default=STATUS_ATUALIZACAO_PENDENTE,
+        db_index=True,
+    )
     atualizado_por = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
@@ -105,6 +122,9 @@ class Cidadao(BaseSincronizacao):
     class Meta:
         db_table = 'api_cidadao'
         verbose_name = 'Cidadão'
+        indexes = [
+            models.Index(fields=['atualizado_em'], name='api_cidadao_atualizado_idx'),
+        ]
 
     def __str__(self):
         return self.nome
@@ -158,12 +178,15 @@ class DocumentoAnexo(BaseSincronizacao):
     arquivo = models.FileField(
         upload_to=documento_anexo_upload_to,
         validators=[FileExtensionValidator(['jpg', 'jpeg', 'png', 'pdf'])],
+        blank=True,
+        null=True,
     )
     nome_arquivo = models.CharField(max_length=255)
     extensao = models.CharField(max_length=10)
     tamanho_bytes = models.PositiveBigIntegerField(default=0)
     data_envio = models.DateTimeField(auto_now_add=True)
     status = models.CharField(max_length=30, default='ENVIADO')
+    sem_documento_no_momento = models.BooleanField(default=False)
 
     class Meta:
         db_table = 'api_documentos_anexos'
@@ -198,6 +221,7 @@ class Endereco(BaseSincronizacao):
         ('ALUGADA', 'Alugada'),
         ('CEDIDA', 'Cedida'),
         ('TEMPORARIA', 'Temporária'),
+        ('NAO_INFORMADO', 'Não informado'),
     ]
     ABASTECIMENTO_AGUA_CHOICES = [
         ('REDE_PUBLICA', 'Rede pública'),
@@ -206,6 +230,7 @@ class Endereco(BaseSincronizacao):
         ('CISTERNA', 'Cisterna'),
         ('CACIMBA', 'Cacimba'),
         ('OUTRO', 'Outro'),
+        ('NAO_INFORMADO', 'Não informado'),
     ]
 
     cidadao = models.OneToOneField(Cidadao, on_delete=models.CASCADE, related_name='endereco')
@@ -226,7 +251,7 @@ class Endereco(BaseSincronizacao):
     situacao_imovel = models.CharField(max_length=20, choices=SITUACAO_CHOICES, blank=True, null=True)
     valor_aluguel = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     material_parede = models.CharField(max_length=50, blank=True, null=True)
-    qtd_comodos = models.IntegerField(null=True, blank=True)
+    qtd_comodos = models.IntegerField(default=1, null=True, blank=True)
     
     possui_luz = models.BooleanField(null=True, blank=True)
     possui_asfalto = models.BooleanField(null=True, blank=True)
@@ -240,12 +265,94 @@ class Endereco(BaseSincronizacao):
     abastecimento_agua_outro = models.CharField(max_length=100, blank=True, null=True)
     possui_saneamento = models.BooleanField(null=True, blank=True)
 
+    # --- Geocodificação / Mapa de calor ---
+    GEO_STATUS_PENDENTE = 'PENDENTE'
+    GEO_STATUS_OK = 'OK'
+    GEO_STATUS_NAO_ENCONTRADO = 'NAO_ENCONTRADO'
+    GEO_STATUS_ERRO = 'ERRO'
+    GEOCODIFICACAO_STATUS_CHOICES = [
+        (GEO_STATUS_PENDENTE, 'Pendente'),
+        (GEO_STATUS_OK, 'Geocodificado'),
+        (GEO_STATUS_NAO_ENCONTRADO, 'Não encontrado'),
+        (GEO_STATUS_ERRO, 'Erro'),
+    ]
+
+    PRECISAO_EXATO = 'ENDERECO_EXATO'
+    PRECISAO_RUA = 'RUA'
+    PRECISAO_LOCALIDADE = 'LOCALIDADE'
+    PRECISAO_MANUAL = 'MANUAL'
+    PRECISAO_CHOICES = [
+        (PRECISAO_EXATO, 'Endereço exato'),
+        (PRECISAO_RUA, 'Rua'),
+        (PRECISAO_LOCALIDADE, 'Localidade'),
+        (PRECISAO_MANUAL, 'Manual'),
+    ]
+
+    latitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
+    endereco_geocodificado = models.CharField(max_length=300, blank=True, default='')
+    geocodificacao_status = models.CharField(
+        max_length=20,
+        choices=GEOCODIFICACAO_STATUS_CHOICES,
+        default=GEO_STATUS_PENDENTE,
+        db_index=True,
+    )
+    geocodificacao_erro = models.TextField(blank=True, default='')
+    geocodificado_em = models.DateTimeField(null=True, blank=True)
+    precisao_geocodificacao = models.CharField(
+        max_length=20,
+        choices=PRECISAO_CHOICES,
+        null=True,
+        blank=True,
+    )
+    # Assinatura dos campos de endereço — detecta alteração para reprocessar.
+    endereco_hash = models.CharField(max_length=64, blank=True, default='')
+
     class Meta:
         db_table = 'api_habitacao'
+
+    def _assinatura_endereco(self):
+        partes = [
+            self.logradouro,
+            self.numero,
+            self.bairro,
+            self.distrito,
+            self.comunidade_localidade,
+        ]
+        base = '|'.join((parte or '').strip().lower() for parte in partes)
+        return hashlib.sha256(base.encode('utf-8')).hexdigest()
+
+    @property
+    def tem_endereco_geocodificavel(self):
+        return bool(
+            (self.logradouro or '').strip()
+            or (self.bairro or '').strip()
+            or (self.comunidade_localidade or '').strip()
+            or (self.distrito or '').strip()
+        )
+
+    def save(self, *args, **kwargs):
+        novo_hash = self._assinatura_endereco()
+        # Coordenadas manuais nunca são descartadas automaticamente.
+        if self.precisao_geocodificacao != self.PRECISAO_MANUAL and self.endereco_hash != novo_hash:
+            self.latitude = None
+            self.longitude = None
+            self.endereco_geocodificado = ''
+            self.geocodificacao_erro = ''
+            self.geocodificado_em = None
+            self.precisao_geocodificacao = None
+            self.geocodificacao_status = (
+                self.GEO_STATUS_PENDENTE
+                if self.tem_endereco_geocodificavel
+                else self.GEO_STATUS_NAO_ENCONTRADO
+            )
+        self.endereco_hash = novo_hash
+        super().save(*args, **kwargs)
 
 
 class FamiliaMembro(BaseSincronizacao):
     cidadao_titular = models.ForeignKey(Cidadao, on_delete=models.CASCADE, related_name='membros_familia')
+    local_id = models.CharField(max_length=64, blank=True, default='')
     nome_membro = models.CharField(max_length=200)
     parentesco = models.CharField(max_length=50)
     cpf_membro = models.CharField(max_length=14, blank=True, null=True)
@@ -364,7 +471,7 @@ class Socioeconomico(BaseSincronizacao):
     cidadao = models.OneToOneField(Cidadao, on_delete=models.CASCADE, related_name='socioeconomico')
     renda_total = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     precedencia_rendimento = models.TextField(blank=True)
-    pessoas_com_rendimento = models.IntegerField(default=0)
+    pessoas_com_rendimento = models.IntegerField(default=1)
     recebe_beneficio = models.BooleanField(default=False)
     beneficio_nome = models.CharField(max_length=150, blank=True, null=True)
     beneficio_tipo = models.CharField(max_length=100, blank=True, null=True)
@@ -425,6 +532,9 @@ class Beneficio(BaseSincronizacao):
     class Meta:
         db_table = 'api_beneficio'
         verbose_name = 'Benefício'
+        indexes = [
+            models.Index(fields=['atualizado_em'], name='api_beneficio_atualiz_idx'),
+        ]
 
     def __str__(self):
         return self.nome
@@ -460,4 +570,5 @@ class Beneficiario(BaseSincronizacao):
         indexes = [
             models.Index(fields=['beneficio', 'status']),
             models.Index(fields=['cidadao', 'status']),
+            models.Index(fields=['atualizado_em'], name='api_benefic_atualiz_0102e4_idx'),
         ]

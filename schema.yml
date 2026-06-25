@@ -1,0 +1,2880 @@
+openapi: 3.0.3
+info:
+  title: Bolsa Tefe API
+  version: 1.0.0
+  description: API para cadastro e gestão social do Bolsa Tefe.
+paths:
+  /api/beneficiarios/:
+    get:
+      operationId: beneficiarios_list
+      parameters:
+      - in: query
+        name: beneficio
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: cidadao
+        schema:
+          type: string
+          format: uuid
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: status
+        schema:
+          type: string
+          enum:
+          - APROVADO
+          - EM_ANALISE
+          - REPROVADO
+        description: |-
+          * `EM_ANALISE` - Em análise
+          * `APROVADO` - Aprovado
+          * `REPROVADO` - Reprovado
+      tags:
+      - beneficiarios
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Beneficiario'
+          description: ''
+    post:
+      operationId: beneficiarios_create
+      tags:
+      - beneficiarios
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Beneficiario'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Beneficiario'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Beneficiario'
+        required: true
+      security:
+      - BearerAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Beneficiario'
+          description: ''
+  /api/beneficiarios/{id}/:
+    get:
+      operationId: beneficiarios_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this beneficiario.
+        required: true
+      tags:
+      - beneficiarios
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Beneficiario'
+          description: ''
+    put:
+      operationId: beneficiarios_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this beneficiario.
+        required: true
+      tags:
+      - beneficiarios
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Beneficiario'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Beneficiario'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Beneficiario'
+        required: true
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Beneficiario'
+          description: ''
+    patch:
+      operationId: beneficiarios_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this beneficiario.
+        required: true
+      tags:
+      - beneficiarios
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedBeneficiario'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedBeneficiario'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedBeneficiario'
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Beneficiario'
+          description: ''
+    delete:
+      operationId: beneficiarios_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this beneficiario.
+        required: true
+      tags:
+      - beneficiarios
+      security:
+      - BearerAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/beneficiarios/sincronizar/:
+    post:
+      operationId: beneficiarios_sincronizar_create
+      parameters:
+      - in: query
+        name: beneficio
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: cidadao
+        schema:
+          type: string
+          format: uuid
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: status
+        schema:
+          type: string
+          enum:
+          - APROVADO
+          - EM_ANALISE
+          - REPROVADO
+        description: |-
+          * `EM_ANALISE` - Em análise
+          * `APROVADO` - Aprovado
+          * `REPROVADO` - Reprovado
+      tags:
+      - beneficiarios
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/Beneficiario'
+          application/x-www-form-urlencoded:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/Beneficiario'
+          multipart/form-data:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/Beneficiario'
+        required: true
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Beneficiario'
+          description: ''
+  /api/beneficios/:
+    get:
+      operationId: beneficios_list
+      parameters:
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - beneficios
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Beneficio'
+          description: ''
+    post:
+      operationId: beneficios_create
+      tags:
+      - beneficios
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Beneficio'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Beneficio'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Beneficio'
+        required: true
+      security:
+      - BearerAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Beneficio'
+          description: ''
+  /api/beneficios/{beneficio_id}/cidadaos/:
+    get:
+      operationId: beneficios_cidadaos_list
+      parameters:
+      - in: path
+        name: beneficio_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - beneficios
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BeneficioCidadao'
+          description: ''
+  /api/beneficios/{id}/:
+    get:
+      operationId: beneficios_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Benefício.
+        required: true
+      tags:
+      - beneficios
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Beneficio'
+          description: ''
+    put:
+      operationId: beneficios_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Benefício.
+        required: true
+      tags:
+      - beneficios
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Beneficio'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Beneficio'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Beneficio'
+        required: true
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Beneficio'
+          description: ''
+    patch:
+      operationId: beneficios_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Benefício.
+        required: true
+      tags:
+      - beneficios
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedBeneficio'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedBeneficio'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedBeneficio'
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Beneficio'
+          description: ''
+    delete:
+      operationId: beneficios_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Benefício.
+        required: true
+      tags:
+      - beneficios
+      security:
+      - BearerAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/cidadaos/:
+    get:
+      operationId: cidadaos_list
+      parameters:
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - cidadaos
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Cidadao'
+          description: ''
+    post:
+      operationId: cidadaos_create
+      tags:
+      - cidadaos
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Cidadao'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Cidadao'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Cidadao'
+        required: true
+      security:
+      - BearerAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cidadao'
+          description: ''
+  /api/cidadaos/{cidadao_id}/beneficios/:
+    get:
+      operationId: cidadaos_beneficios_list
+      parameters:
+      - in: path
+        name: cidadao_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - cidadaos
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Beneficiario'
+          description: ''
+    post:
+      operationId: cidadaos_beneficios_create
+      parameters:
+      - in: path
+        name: cidadao_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - cidadaos
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Beneficiario'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Beneficiario'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Beneficiario'
+        required: true
+      security:
+      - BearerAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Beneficiario'
+          description: ''
+  /api/cidadaos/{cidadao_id}/beneficios/{beneficio_id}/:
+    patch:
+      operationId: cidadaos_beneficios_partial_update
+      parameters:
+      - in: path
+        name: beneficio_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: cidadao_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - cidadaos
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedBeneficiario'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedBeneficiario'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedBeneficiario'
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Beneficiario'
+          description: ''
+    delete:
+      operationId: cidadaos_beneficios_destroy
+      parameters:
+      - in: path
+        name: beneficio_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: cidadao_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - cidadaos
+      security:
+      - BearerAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/cidadaos/{cidadao_id}/documentos/:
+    get:
+      operationId: cidadaos_documentos_retrieve
+      parameters:
+      - in: path
+        name: cidadao_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - cidadaos
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          description: No response body
+    post:
+      operationId: cidadaos_documentos_create
+      parameters:
+      - in: path
+        name: cidadao_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - cidadaos
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/cidadaos/{cidadao_id}/documentos/{documento_ref}/:
+    delete:
+      operationId: cidadaos_documentos_destroy
+      parameters:
+      - in: path
+        name: cidadao_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: documento_ref
+        schema:
+          type: string
+        required: true
+      tags:
+      - cidadaos
+      security:
+      - BearerAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/cidadaos/{id}/:
+    get:
+      operationId: cidadaos_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Cidadão.
+        required: true
+      tags:
+      - cidadaos
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cidadao'
+          description: ''
+    put:
+      operationId: cidadaos_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Cidadão.
+        required: true
+      tags:
+      - cidadaos
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Cidadao'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Cidadao'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Cidadao'
+        required: true
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cidadao'
+          description: ''
+    patch:
+      operationId: cidadaos_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Cidadão.
+        required: true
+      tags:
+      - cidadaos
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedCidadao'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedCidadao'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedCidadao'
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cidadao'
+          description: ''
+    delete:
+      operationId: cidadaos_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Cidadão.
+        required: true
+      tags:
+      - cidadaos
+      security:
+      - BearerAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/cidadaos/buscar-no-tefe/:
+    get:
+      operationId: cidadaos_buscar_no_tefe_retrieve
+      tags:
+      - cidadaos
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cidadao'
+          description: ''
+  /api/cidadaos/importar-do-tefe/:
+    post:
+      operationId: cidadaos_importar_do_tefe_create
+      tags:
+      - cidadaos
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cidadao'
+          description: ''
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cidadao'
+          description: ''
+  /api/documentos/pdf/:
+    post:
+      operationId: documentos_pdf_create
+      tags:
+      - documentos
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/escolas/:
+    get:
+      operationId: escolas_list
+      parameters:
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - escolas
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Escola'
+          description: ''
+  /api/escolas/{id}/:
+    get:
+      operationId: escolas_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this escola.
+        required: true
+      tags:
+      - escolas
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Escola'
+          description: ''
+  /api/locais-tefe/:
+    get:
+      operationId: locais_tefe_list
+      parameters:
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - locais-tefe
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LocalTefe'
+          description: ''
+    post:
+      operationId: locais_tefe_create
+      tags:
+      - locais-tefe
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LocalTefe'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LocalTefe'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LocalTefe'
+        required: true
+      security:
+      - BearerAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LocalTefe'
+          description: ''
+  /api/locais-tefe/{id}/:
+    get:
+      operationId: locais_tefe_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this local tefe.
+        required: true
+      tags:
+      - locais-tefe
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LocalTefe'
+          description: ''
+    put:
+      operationId: locais_tefe_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this local tefe.
+        required: true
+      tags:
+      - locais-tefe
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LocalTefe'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LocalTefe'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LocalTefe'
+        required: true
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LocalTefe'
+          description: ''
+    patch:
+      operationId: locais_tefe_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this local tefe.
+        required: true
+      tags:
+      - locais-tefe
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedLocalTefe'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedLocalTefe'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedLocalTefe'
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LocalTefe'
+          description: ''
+    delete:
+      operationId: locais_tefe_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this local tefe.
+        required: true
+      tags:
+      - locais-tefe
+      security:
+      - BearerAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/localidades/:
+    get:
+      operationId: localidades_list
+      parameters:
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - localidades
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Localidade'
+          description: ''
+    post:
+      operationId: localidades_create
+      tags:
+      - localidades
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Localidade'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Localidade'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Localidade'
+        required: true
+      security:
+      - BearerAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Localidade'
+          description: ''
+  /api/localidades/{id}/:
+    get:
+      operationId: localidades_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this localidade.
+        required: true
+      tags:
+      - localidades
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Localidade'
+          description: ''
+    put:
+      operationId: localidades_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this localidade.
+        required: true
+      tags:
+      - localidades
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Localidade'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Localidade'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Localidade'
+        required: true
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Localidade'
+          description: ''
+    patch:
+      operationId: localidades_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this localidade.
+        required: true
+      tags:
+      - localidades
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedLocalidade'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedLocalidade'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedLocalidade'
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Localidade'
+          description: ''
+    delete:
+      operationId: localidades_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this localidade.
+        required: true
+      tags:
+      - localidades
+      security:
+      - BearerAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/ruas/:
+    get:
+      operationId: ruas_list
+      parameters:
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - ruas
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Rua'
+          description: ''
+    post:
+      operationId: ruas_create
+      tags:
+      - ruas
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Rua'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Rua'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Rua'
+        required: true
+      security:
+      - BearerAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Rua'
+          description: ''
+  /api/ruas/{id}/:
+    get:
+      operationId: ruas_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this rua.
+        required: true
+      tags:
+      - ruas
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Rua'
+          description: ''
+    put:
+      operationId: ruas_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this rua.
+        required: true
+      tags:
+      - ruas
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Rua'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Rua'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Rua'
+        required: true
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Rua'
+          description: ''
+    patch:
+      operationId: ruas_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this rua.
+        required: true
+      tags:
+      - ruas
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedRua'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedRua'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedRua'
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Rua'
+          description: ''
+    delete:
+      operationId: ruas_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this rua.
+        required: true
+      tags:
+      - ruas
+      security:
+      - BearerAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/usuarios/liberar-operador/:
+    post:
+      operationId: usuarios_liberar_operador_create
+      tags:
+      - usuarios
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          description: No response body
+components:
+  schemas:
+    AbastecimentoAguaEnum:
+      enum:
+      - REDE_PUBLICA
+      - POCO
+      - NASCENTE
+      - CISTERNA
+      - CACIMBA
+      - OUTRO
+      - NAO_INFORMADO
+      type: string
+      description: |-
+        * `REDE_PUBLICA` - Rede pública
+        * `POCO` - Poço
+        * `NASCENTE` - Nascente
+        * `CISTERNA` - Cisterna
+        * `CACIMBA` - Cacimba
+        * `OUTRO` - Outro
+        * `NAO_INFORMADO` - Não informado
+    Beneficiario:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        vinculo_id:
+          type: string
+          format: uuid
+          readOnly: true
+        cidadao:
+          type: string
+          format: uuid
+        cidadao_id:
+          type: string
+          format: uuid
+          readOnly: true
+        cidadao_nome:
+          type: string
+          readOnly: true
+        beneficio:
+          type: string
+          format: uuid
+        beneficio_id:
+          type: string
+          format: uuid
+          readOnly: true
+        beneficio_nome:
+          type: string
+          readOnly: true
+        nome:
+          type: string
+          readOnly: true
+        beneficioNome:
+          type: string
+          readOnly: true
+        ativo:
+          type: boolean
+          readOnly: true
+        beneficio_ativo:
+          type: boolean
+          readOnly: true
+        beneficio_status:
+          type: string
+          readOnly: true
+        status:
+          $ref: '#/components/schemas/StatusEnum'
+        valor_recebido:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        data_solicitacao:
+          type: string
+          format: date
+          readOnly: true
+        atualizado_por:
+          type: integer
+          readOnly: true
+          nullable: true
+        atualizado_por_nome:
+          type: string
+          readOnly: true
+        sincronizado:
+          type: boolean
+        status_sincronizacao:
+          $ref: '#/components/schemas/StatusSincronizacaoEnum'
+        sincronizado_em:
+          type: string
+          format: date-time
+          nullable: true
+        criado_em:
+          type: string
+          format: date-time
+          readOnly: true
+        atualizado_em:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - ativo
+      - atualizado_em
+      - atualizado_por
+      - atualizado_por_nome
+      - beneficio
+      - beneficioNome
+      - beneficio_ativo
+      - beneficio_id
+      - beneficio_nome
+      - beneficio_status
+      - cidadao
+      - cidadao_id
+      - cidadao_nome
+      - criado_em
+      - data_solicitacao
+      - id
+      - nome
+      - vinculo_id
+    Beneficio:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        nome:
+          type: string
+          maxLength: 150
+        descricao:
+          type: string
+        ativo:
+          type: boolean
+        atualizado_por:
+          type: integer
+          readOnly: true
+          nullable: true
+        atualizado_por_nome:
+          type: string
+          readOnly: true
+        sincronizado:
+          type: boolean
+        status_sincronizacao:
+          $ref: '#/components/schemas/StatusSincronizacaoEnum'
+        sincronizado_em:
+          type: string
+          format: date-time
+          nullable: true
+        criado_em:
+          type: string
+          format: date-time
+          readOnly: true
+        atualizado_em:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - atualizado_em
+      - atualizado_por
+      - atualizado_por_nome
+      - criado_em
+      - id
+      - nome
+    BeneficioCidadao:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        vinculo_id:
+          type: string
+          format: uuid
+          readOnly: true
+        beneficio_id:
+          type: string
+          format: uuid
+          readOnly: true
+        cidadao_id:
+          type: string
+          format: uuid
+          readOnly: true
+        nome:
+          type: string
+          readOnly: true
+        email:
+          type: string
+          readOnly: true
+        nis:
+          type: string
+          readOnly: true
+        cpf:
+          type: string
+          readOnly: true
+        data_nascimento:
+          type: string
+          format: date
+          readOnly: true
+        status:
+          $ref: '#/components/schemas/StatusEnum'
+      required:
+      - beneficio_id
+      - cidadao_id
+      - cpf
+      - data_nascimento
+      - email
+      - id
+      - nis
+      - nome
+      - vinculo_id
+    BlankEnum:
+      enum:
+      - ''
+    Cidadao:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        nome:
+          type: string
+          maxLength: 200
+        status:
+          type: string
+          writeOnly: true
+        local_id:
+          type: string
+          writeOnly: true
+        created_at:
+          type: string
+          readOnly: true
+        updated_at:
+          type: string
+          readOnly: true
+        deleted:
+          type: boolean
+          writeOnly: true
+        nis:
+          type: string
+          nullable: true
+          maxLength: 20
+        data_nascimento:
+          type: string
+          format: date
+          nullable: true
+        telefone:
+          type: string
+          nullable: true
+          maxLength: 20
+        email:
+          type: string
+          format: email
+          nullable: true
+          maxLength: 254
+        naturalidade:
+          type: string
+          nullable: true
+          maxLength: 100
+        escolaridade:
+          type: string
+          nullable: true
+          maxLength: 100
+        identidade_genero:
+          type: string
+          nullable: true
+          maxLength: 50
+        cor:
+          type: string
+          nullable: true
+          maxLength: 50
+        possui_deficiencia:
+          type: boolean
+        estado_civil:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/EstadoCivilEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        autorizacao_uso_imagem:
+          type: boolean
+        autorizacao_uso_imagem_aceite_em:
+          type: string
+          format: date-time
+          nullable: true
+        autorizacao_uso_imagem_responsavel:
+          type: string
+          nullable: true
+          maxLength: 200
+        bairro:
+          type: string
+          writeOnly: true
+        pretende_voltar_estudar:
+          type: boolean
+          writeOnly: true
+        possui_medida_protetiva:
+          type: boolean
+          writeOnly: true
+        violencia_domestica:
+          type: boolean
+          writeOnly: true
+        eh_ribeirinho:
+          type: boolean
+          writeOnly: true
+        cidadao_estava_em_casa:
+          type: boolean
+          writeOnly: true
+        ja_foi_visitado:
+          type: boolean
+          writeOnly: true
+        atualizado_por:
+          type: integer
+          readOnly: true
+          nullable: true
+        atualizado_por_nome:
+          type: string
+          readOnly: true
+        sincronizado:
+          type: boolean
+        status_sincronizacao:
+          $ref: '#/components/schemas/StatusSincronizacaoEnum'
+        sincronizado_em:
+          type: string
+          format: date-time
+          nullable: true
+        status_atualizacao:
+          allOf:
+          - $ref: '#/components/schemas/StatusAtualizacaoEnum'
+          readOnly: true
+        pendente_sincronizacao:
+          type: boolean
+          readOnly: true
+        nao_sincronizado:
+          type: boolean
+          readOnly: true
+        situacaoBeneficiario:
+          type: string
+          readOnly: true
+        documentos:
+          allOf:
+          - $ref: '#/components/schemas/Documento'
+          nullable: true
+        documentos_anexados:
+          type: array
+          items:
+            $ref: '#/components/schemas/DocumentoAnexo'
+          readOnly: true
+        documentosAnexados:
+          type: string
+          readOnly: true
+        documento_pdf:
+          type: string
+          readOnly: true
+        endereco:
+          allOf:
+          - $ref: '#/components/schemas/Endereco'
+          nullable: true
+        socioeconomico:
+          allOf:
+          - $ref: '#/components/schemas/Socioeconomico'
+          nullable: true
+        membros_familia:
+          type: array
+          items:
+            $ref: '#/components/schemas/FamiliaMembro'
+        termo_responsabilidade:
+          allOf:
+          - $ref: '#/components/schemas/TermoResponsabilidade'
+          nullable: true
+        nome_responsavel:
+          type: string
+          readOnly: true
+        local_termo:
+          type: string
+          readOnly: true
+        data_termo:
+          type: string
+          readOnly: true
+        hora_termo:
+          type: string
+          readOnly: true
+        criado_em:
+          type: string
+          format: date-time
+          readOnly: true
+        atualizado_em:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - atualizado_em
+      - atualizado_por
+      - atualizado_por_nome
+      - created_at
+      - criado_em
+      - data_termo
+      - documento_pdf
+      - documentosAnexados
+      - documentos_anexados
+      - hora_termo
+      - id
+      - local_termo
+      - nao_sincronizado
+      - nome
+      - nome_responsavel
+      - pendente_sincronizacao
+      - situacaoBeneficiario
+      - status_atualizacao
+      - updated_at
+    Documento:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        cpf:
+          type: string
+          nullable: true
+          maxLength: 14
+        rg:
+          type: string
+          nullable: true
+          maxLength: 20
+        rg_orgao:
+          type: string
+          nullable: true
+          maxLength: 20
+        rg_uf:
+          type: string
+          nullable: true
+          maxLength: 2
+        carteira_trabalho:
+          type: string
+          nullable: true
+          maxLength: 50
+        inscricao_eleitoral:
+          type: string
+          nullable: true
+          maxLength: 30
+        zona:
+          type: string
+          nullable: true
+          maxLength: 10
+        secao:
+          type: string
+          nullable: true
+          maxLength: 10
+        sincronizado:
+          type: boolean
+        status_sincronizacao:
+          $ref: '#/components/schemas/StatusSincronizacaoEnum'
+        sincronizado_em:
+          type: string
+          format: date-time
+          nullable: true
+        criado_em:
+          type: string
+          format: date-time
+          readOnly: true
+        atualizado_em:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - atualizado_em
+      - criado_em
+      - id
+    DocumentoAnexo:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        tipo_documento:
+          type: string
+          readOnly: true
+        tipo_documento_legacy:
+          type: string
+          readOnly: true
+        nome_arquivo:
+          type: string
+          readOnly: true
+        url:
+          type: string
+          readOnly: true
+        extensao:
+          type: string
+          readOnly: true
+        tamanho_bytes:
+          type: integer
+          readOnly: true
+        data_envio:
+          type: string
+          format: date-time
+          readOnly: true
+        status:
+          type: string
+          readOnly: true
+        sem_documento_no_momento:
+          type: boolean
+          readOnly: true
+        sincronizado:
+          type: boolean
+          readOnly: true
+        status_sincronizacao:
+          allOf:
+          - $ref: '#/components/schemas/StatusSincronizacaoEnum'
+          readOnly: true
+        sincronizado_em:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        criado_em:
+          type: string
+          format: date-time
+          readOnly: true
+        atualizado_em:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - atualizado_em
+      - criado_em
+      - data_envio
+      - extensao
+      - id
+      - nome_arquivo
+      - sem_documento_no_momento
+      - sincronizado
+      - sincronizado_em
+      - status
+      - status_sincronizacao
+      - tamanho_bytes
+      - tipo_documento
+      - tipo_documento_legacy
+      - url
+    Endereco:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        tipo_localizacao:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/TipoLocalizacaoEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        logradouro:
+          type: string
+          maxLength: 200
+        bairro:
+          type: string
+          maxLength: 100
+        distrito:
+          type: string
+          nullable: true
+          maxLength: 100
+        comunidade_localidade:
+          type: string
+          nullable: true
+          maxLength: 150
+        numero:
+          type: string
+          nullable: true
+          maxLength: 20
+        cep:
+          type: string
+          nullable: true
+          maxLength: 10
+        complemento:
+          type: string
+          nullable: true
+          maxLength: 100
+        situacao_imovel:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/SituacaoImovelEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        valor_aluguel:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        material_parede:
+          type: string
+          nullable: true
+          maxLength: 50
+        qtd_comodos:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+        possui_luz:
+          type: boolean
+          nullable: true
+        possui_asfalto:
+          type: boolean
+          nullable: true
+        possui_lixo:
+          type: boolean
+          nullable: true
+        abastecimento_agua:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/AbastecimentoAguaEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        abastecimento_agua_outro:
+          type: string
+          nullable: true
+          maxLength: 100
+        possui_saneamento:
+          type: boolean
+          nullable: true
+        sincronizado:
+          type: boolean
+        status_sincronizacao:
+          $ref: '#/components/schemas/StatusSincronizacaoEnum'
+        sincronizado_em:
+          type: string
+          format: date-time
+          nullable: true
+        criado_em:
+          type: string
+          format: date-time
+          readOnly: true
+        atualizado_em:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - atualizado_em
+      - criado_em
+      - id
+      - logradouro
+    Escola:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        codigo:
+          type: string
+          nullable: true
+          maxLength: 20
+        nome:
+          type: string
+          maxLength: 200
+        tipo:
+          type: string
+          nullable: true
+          maxLength: 50
+        zona:
+          type: string
+          nullable: true
+          maxLength: 20
+        sincronizado:
+          type: boolean
+        status_sincronizacao:
+          $ref: '#/components/schemas/StatusSincronizacaoEnum'
+        sincronizado_em:
+          type: string
+          format: date-time
+          nullable: true
+        criado_em:
+          type: string
+          format: date-time
+          readOnly: true
+        atualizado_em:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - atualizado_em
+      - criado_em
+      - id
+      - nome
+    EstadoCivilEnum:
+      enum:
+      - SOLTEIRO
+      - CASADO
+      - DIVORCIADO
+      - VIUVO
+      - UNIAO_ESTAVEL
+      - NAO_INFORMADO
+      type: string
+      description: |-
+        * `SOLTEIRO` - Solteiro
+        * `CASADO` - Casado
+        * `DIVORCIADO` - Divorciado
+        * `VIUVO` - Viúvo
+        * `UNIAO_ESTAVEL` - União estável
+        * `NAO_INFORMADO` - Não informado
+    FamiliaMembro:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        local_id:
+          type: string
+          maxLength: 64
+        nome_membro:
+          type: string
+          maxLength: 200
+        parentesco:
+          type: string
+          maxLength: 50
+        cpf_membro:
+          type: string
+          nullable: true
+          maxLength: 14
+        nao_possui_cpf:
+          type: boolean
+        data_nascimento:
+          type: string
+          format: date
+          nullable: true
+        sexo:
+          type: string
+          nullable: true
+          maxLength: 20
+        escolaridade:
+          type: string
+          nullable: true
+          maxLength: 100
+        ocupacao:
+          type: string
+          nullable: true
+          maxLength: 100
+        escola:
+          type: string
+          writeOnly: true
+        sem_cpf:
+          type: boolean
+          writeOnly: true
+        escola_em_que_estuda:
+          type: string
+          nullable: true
+          maxLength: 200
+        gestante:
+          type: boolean
+        possui_cartao_sus:
+          type: boolean
+        possui_deficiencia:
+          type: boolean
+        qual_deficiencia:
+          type: string
+          nullable: true
+          maxLength: 200
+        possui_doenca_grave:
+          type: boolean
+        descricao_doenca:
+          type: string
+          nullable: true
+        uso_substancia_ilicita:
+          type: boolean
+        descricao_substancia:
+          type: string
+          nullable: true
+        sincronizado:
+          type: boolean
+        status_sincronizacao:
+          $ref: '#/components/schemas/StatusSincronizacaoEnum'
+        sincronizado_em:
+          type: string
+          format: date-time
+          nullable: true
+        criado_em:
+          type: string
+          format: date-time
+          readOnly: true
+        atualizado_em:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - atualizado_em
+      - criado_em
+      - id
+      - nome_membro
+      - parentesco
+    LocalTefe:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        tipo:
+          $ref: '#/components/schemas/LocalTefeTipoEnum'
+        nome:
+          type: string
+          maxLength: 200
+        ativo:
+          type: boolean
+        ordem:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+        created_at:
+          type: string
+          readOnly: true
+        updated_at:
+          type: string
+          readOnly: true
+        sincronizado:
+          type: boolean
+        status_sincronizacao:
+          $ref: '#/components/schemas/StatusSincronizacaoEnum'
+        sincronizado_em:
+          type: string
+          format: date-time
+          nullable: true
+        criado_em:
+          type: string
+          format: date-time
+          readOnly: true
+        atualizado_em:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - atualizado_em
+      - created_at
+      - criado_em
+      - id
+      - nome
+      - tipo
+      - updated_at
+    LocalTefeTipoEnum:
+      enum:
+      - BAIRRO
+      - DISTRITO
+      - COMUNIDADE
+      type: string
+      description: |-
+        * `BAIRRO` - Bairro
+        * `DISTRITO` - Distrito
+        * `COMUNIDADE` - Comunidade
+    Localidade:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        nome:
+          type: string
+          maxLength: 200
+        tipo:
+          $ref: '#/components/schemas/LocalidadeTipoEnum'
+        criada_automaticamente:
+          type: boolean
+        created_at:
+          type: string
+          readOnly: true
+        updated_at:
+          type: string
+          readOnly: true
+        sincronizado:
+          type: boolean
+        status_sincronizacao:
+          $ref: '#/components/schemas/StatusSincronizacaoEnum'
+        sincronizado_em:
+          type: string
+          format: date-time
+          nullable: true
+        criado_em:
+          type: string
+          format: date-time
+          readOnly: true
+        atualizado_em:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - atualizado_em
+      - created_at
+      - criado_em
+      - id
+      - nome
+      - tipo
+      - updated_at
+    LocalidadeTipoEnum:
+      enum:
+      - BAIRRO
+      - COMUNIDADE
+      - DISTRITO
+      type: string
+      description: |-
+        * `BAIRRO` - Bairro
+        * `COMUNIDADE` - Comunidade
+        * `DISTRITO` - Distrito
+    NullEnum:
+      enum:
+      - null
+    PatchedBeneficiario:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        vinculo_id:
+          type: string
+          format: uuid
+          readOnly: true
+        cidadao:
+          type: string
+          format: uuid
+        cidadao_id:
+          type: string
+          format: uuid
+          readOnly: true
+        cidadao_nome:
+          type: string
+          readOnly: true
+        beneficio:
+          type: string
+          format: uuid
+        beneficio_id:
+          type: string
+          format: uuid
+          readOnly: true
+        beneficio_nome:
+          type: string
+          readOnly: true
+        nome:
+          type: string
+          readOnly: true
+        beneficioNome:
+          type: string
+          readOnly: true
+        ativo:
+          type: boolean
+          readOnly: true
+        beneficio_ativo:
+          type: boolean
+          readOnly: true
+        beneficio_status:
+          type: string
+          readOnly: true
+        status:
+          $ref: '#/components/schemas/StatusEnum'
+        valor_recebido:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        data_solicitacao:
+          type: string
+          format: date
+          readOnly: true
+        atualizado_por:
+          type: integer
+          readOnly: true
+          nullable: true
+        atualizado_por_nome:
+          type: string
+          readOnly: true
+        sincronizado:
+          type: boolean
+        status_sincronizacao:
+          $ref: '#/components/schemas/StatusSincronizacaoEnum'
+        sincronizado_em:
+          type: string
+          format: date-time
+          nullable: true
+        criado_em:
+          type: string
+          format: date-time
+          readOnly: true
+        atualizado_em:
+          type: string
+          format: date-time
+          readOnly: true
+    PatchedBeneficio:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        nome:
+          type: string
+          maxLength: 150
+        descricao:
+          type: string
+        ativo:
+          type: boolean
+        atualizado_por:
+          type: integer
+          readOnly: true
+          nullable: true
+        atualizado_por_nome:
+          type: string
+          readOnly: true
+        sincronizado:
+          type: boolean
+        status_sincronizacao:
+          $ref: '#/components/schemas/StatusSincronizacaoEnum'
+        sincronizado_em:
+          type: string
+          format: date-time
+          nullable: true
+        criado_em:
+          type: string
+          format: date-time
+          readOnly: true
+        atualizado_em:
+          type: string
+          format: date-time
+          readOnly: true
+    PatchedCidadao:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        nome:
+          type: string
+          maxLength: 200
+        status:
+          type: string
+          writeOnly: true
+        local_id:
+          type: string
+          writeOnly: true
+        created_at:
+          type: string
+          readOnly: true
+        updated_at:
+          type: string
+          readOnly: true
+        deleted:
+          type: boolean
+          writeOnly: true
+        nis:
+          type: string
+          nullable: true
+          maxLength: 20
+        data_nascimento:
+          type: string
+          format: date
+          nullable: true
+        telefone:
+          type: string
+          nullable: true
+          maxLength: 20
+        email:
+          type: string
+          format: email
+          nullable: true
+          maxLength: 254
+        naturalidade:
+          type: string
+          nullable: true
+          maxLength: 100
+        escolaridade:
+          type: string
+          nullable: true
+          maxLength: 100
+        identidade_genero:
+          type: string
+          nullable: true
+          maxLength: 50
+        cor:
+          type: string
+          nullable: true
+          maxLength: 50
+        possui_deficiencia:
+          type: boolean
+        estado_civil:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/EstadoCivilEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        autorizacao_uso_imagem:
+          type: boolean
+        autorizacao_uso_imagem_aceite_em:
+          type: string
+          format: date-time
+          nullable: true
+        autorizacao_uso_imagem_responsavel:
+          type: string
+          nullable: true
+          maxLength: 200
+        bairro:
+          type: string
+          writeOnly: true
+        pretende_voltar_estudar:
+          type: boolean
+          writeOnly: true
+        possui_medida_protetiva:
+          type: boolean
+          writeOnly: true
+        violencia_domestica:
+          type: boolean
+          writeOnly: true
+        eh_ribeirinho:
+          type: boolean
+          writeOnly: true
+        cidadao_estava_em_casa:
+          type: boolean
+          writeOnly: true
+        ja_foi_visitado:
+          type: boolean
+          writeOnly: true
+        atualizado_por:
+          type: integer
+          readOnly: true
+          nullable: true
+        atualizado_por_nome:
+          type: string
+          readOnly: true
+        sincronizado:
+          type: boolean
+        status_sincronizacao:
+          $ref: '#/components/schemas/StatusSincronizacaoEnum'
+        sincronizado_em:
+          type: string
+          format: date-time
+          nullable: true
+        status_atualizacao:
+          allOf:
+          - $ref: '#/components/schemas/StatusAtualizacaoEnum'
+          readOnly: true
+        pendente_sincronizacao:
+          type: boolean
+          readOnly: true
+        nao_sincronizado:
+          type: boolean
+          readOnly: true
+        situacaoBeneficiario:
+          type: string
+          readOnly: true
+        documentos:
+          allOf:
+          - $ref: '#/components/schemas/Documento'
+          nullable: true
+        documentos_anexados:
+          type: array
+          items:
+            $ref: '#/components/schemas/DocumentoAnexo'
+          readOnly: true
+        documentosAnexados:
+          type: string
+          readOnly: true
+        documento_pdf:
+          type: string
+          readOnly: true
+        endereco:
+          allOf:
+          - $ref: '#/components/schemas/Endereco'
+          nullable: true
+        socioeconomico:
+          allOf:
+          - $ref: '#/components/schemas/Socioeconomico'
+          nullable: true
+        membros_familia:
+          type: array
+          items:
+            $ref: '#/components/schemas/FamiliaMembro'
+        termo_responsabilidade:
+          allOf:
+          - $ref: '#/components/schemas/TermoResponsabilidade'
+          nullable: true
+        nome_responsavel:
+          type: string
+          readOnly: true
+        local_termo:
+          type: string
+          readOnly: true
+        data_termo:
+          type: string
+          readOnly: true
+        hora_termo:
+          type: string
+          readOnly: true
+        criado_em:
+          type: string
+          format: date-time
+          readOnly: true
+        atualizado_em:
+          type: string
+          format: date-time
+          readOnly: true
+    PatchedLocalTefe:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        tipo:
+          $ref: '#/components/schemas/LocalTefeTipoEnum'
+        nome:
+          type: string
+          maxLength: 200
+        ativo:
+          type: boolean
+        ordem:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+        created_at:
+          type: string
+          readOnly: true
+        updated_at:
+          type: string
+          readOnly: true
+        sincronizado:
+          type: boolean
+        status_sincronizacao:
+          $ref: '#/components/schemas/StatusSincronizacaoEnum'
+        sincronizado_em:
+          type: string
+          format: date-time
+          nullable: true
+        criado_em:
+          type: string
+          format: date-time
+          readOnly: true
+        atualizado_em:
+          type: string
+          format: date-time
+          readOnly: true
+    PatchedLocalidade:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        nome:
+          type: string
+          maxLength: 200
+        tipo:
+          $ref: '#/components/schemas/LocalidadeTipoEnum'
+        criada_automaticamente:
+          type: boolean
+        created_at:
+          type: string
+          readOnly: true
+        updated_at:
+          type: string
+          readOnly: true
+        sincronizado:
+          type: boolean
+        status_sincronizacao:
+          $ref: '#/components/schemas/StatusSincronizacaoEnum'
+        sincronizado_em:
+          type: string
+          format: date-time
+          nullable: true
+        criado_em:
+          type: string
+          format: date-time
+          readOnly: true
+        atualizado_em:
+          type: string
+          format: date-time
+          readOnly: true
+    PatchedRua:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        nome:
+          type: string
+          maxLength: 200
+        localidade:
+          type: string
+          format: uuid
+        localidade_id:
+          type: string
+          format: uuid
+          readOnly: true
+        localidade_nome:
+          type: string
+          readOnly: true
+        criada_automaticamente:
+          type: boolean
+        created_at:
+          type: string
+          readOnly: true
+        updated_at:
+          type: string
+          readOnly: true
+        sincronizado:
+          type: boolean
+        status_sincronizacao:
+          $ref: '#/components/schemas/StatusSincronizacaoEnum'
+        sincronizado_em:
+          type: string
+          format: date-time
+          nullable: true
+        criado_em:
+          type: string
+          format: date-time
+          readOnly: true
+        atualizado_em:
+          type: string
+          format: date-time
+          readOnly: true
+    Rua:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        nome:
+          type: string
+          maxLength: 200
+        localidade:
+          type: string
+          format: uuid
+        localidade_id:
+          type: string
+          format: uuid
+          readOnly: true
+        localidade_nome:
+          type: string
+          readOnly: true
+        criada_automaticamente:
+          type: boolean
+        created_at:
+          type: string
+          readOnly: true
+        updated_at:
+          type: string
+          readOnly: true
+        sincronizado:
+          type: boolean
+        status_sincronizacao:
+          $ref: '#/components/schemas/StatusSincronizacaoEnum'
+        sincronizado_em:
+          type: string
+          format: date-time
+          nullable: true
+        criado_em:
+          type: string
+          format: date-time
+          readOnly: true
+        atualizado_em:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - atualizado_em
+      - created_at
+      - criado_em
+      - id
+      - localidade
+      - localidade_id
+      - localidade_nome
+      - nome
+      - updated_at
+    SituacaoImovelEnum:
+      enum:
+      - PROPRIA
+      - ALUGADA
+      - CEDIDA
+      - TEMPORARIA
+      - NAO_INFORMADO
+      type: string
+      description: |-
+        * `PROPRIA` - Própria
+        * `ALUGADA` - Alugada
+        * `CEDIDA` - Cedida
+        * `TEMPORARIA` - Temporária
+        * `NAO_INFORMADO` - Não informado
+    Socioeconomico:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        renda_total:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        precedencia_rendimento:
+          type: string
+        pessoas_com_rendimento:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+        recebe_beneficio:
+          type: boolean
+        beneficio_nome:
+          type: string
+          nullable: true
+          maxLength: 150
+        beneficio_tipo:
+          type: string
+          nullable: true
+          maxLength: 100
+        beneficio_valor:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        beneficios_recebidos:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+        quantidade_pessoas_residencia:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+        quantidade_pessoas_estudando:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+        quantidade_criancas:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+        quantidade_adolescentes:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+        quantidade_adultos:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+        quantidade_idosos:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+        ha_gestante:
+          type: boolean
+        ha_pessoa_com_deficiencia:
+          type: boolean
+        qual_deficiencia:
+          type: string
+          nullable: true
+          maxLength: 200
+        utiliza_servico_social:
+          type: boolean
+        servicos_sociais:
+          type: array
+          items:
+            type: string
+        pretende_voltar_estudar:
+          type: boolean
+        possui_medida_protetiva:
+          type: boolean
+        violencia_domestica:
+          type: boolean
+        eh_ribeirinho:
+          type: boolean
+        cidadao_estava_em_casa:
+          type: boolean
+        ja_foi_visitado:
+          type: boolean
+        mais_de_um_nucleo:
+          type: boolean
+        documentacao_completa_grupo:
+          type: boolean
+        observacoes_gerais:
+          type: string
+        sincronizado:
+          type: boolean
+        status_sincronizacao:
+          $ref: '#/components/schemas/StatusSincronizacaoEnum'
+        sincronizado_em:
+          type: string
+          format: date-time
+          nullable: true
+        criado_em:
+          type: string
+          format: date-time
+          readOnly: true
+        atualizado_em:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - atualizado_em
+      - criado_em
+      - id
+    StatusAtualizacaoEnum:
+      enum:
+      - PENDENTE
+      - ATUALIZADO
+      - DESATUALIZADO
+      type: string
+      description: |-
+        * `PENDENTE` - Pendente
+        * `ATUALIZADO` - Atualizado
+        * `DESATUALIZADO` - Desatualizado
+    StatusEnum:
+      enum:
+      - EM_ANALISE
+      - APROVADO
+      - REPROVADO
+      type: string
+      description: |-
+        * `EM_ANALISE` - Em análise
+        * `APROVADO` - Aprovado
+        * `REPROVADO` - Reprovado
+    StatusSincronizacaoEnum:
+      enum:
+      - PENDENTE
+      - SINCRONIZADO
+      - ERRO
+      type: string
+      description: |-
+        * `PENDENTE` - Pendente
+        * `SINCRONIZADO` - Sincronizado
+        * `ERRO` - Erro
+    TermoResponsabilidade:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        nome_responsavel:
+          type: string
+          nullable: true
+          maxLength: 200
+        local_termo:
+          type: string
+          nullable: true
+          maxLength: 200
+        data_termo:
+          type: string
+          nullable: true
+          maxLength: 20
+        hora_termo:
+          type: string
+          nullable: true
+          maxLength: 10
+        sincronizado:
+          type: boolean
+        status_sincronizacao:
+          $ref: '#/components/schemas/StatusSincronizacaoEnum'
+        sincronizado_em:
+          type: string
+          format: date-time
+          nullable: true
+        criado_em:
+          type: string
+          format: date-time
+          readOnly: true
+        atualizado_em:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - atualizado_em
+      - criado_em
+      - id
+    TipoLocalizacaoEnum:
+      enum:
+      - URBANO
+      - RURAL_DISTRITO
+      type: string
+      description: |-
+        * `URBANO` - Urbano
+        * `RURAL_DISTRITO` - Rural/Distrito
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

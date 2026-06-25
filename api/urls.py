@@ -8,15 +8,24 @@ from .views import (
     CidadaoDocumentoPdfView,
     BuscarCidadaoNoTefeView,
     ImportarCidadaoDoTefeView,
+    LiberarOperadorView,
+    RemoverOperadorView,
+    BuscarOperadorView,
     BeneficioViewSet,
     BeneficiarioViewSet,
     BeneficioCidadaosView,
     CidadaoBeneficiosView,
     CidadaoBeneficioDetailView,
+    DashboardStatsView,
     EscolaViewSet,
     LocalTefeViewSet,
     LocalidadeViewSet,
     RuaViewSet,
+    GeocodificarBeneficiariosView,
+    BeneficiariosPendentesView,
+    MapaCalorBeneficiariosView,
+    MapaCalorResumoView,
+    EnderecoCoordManualView,
 )
 
 router = DefaultRouter()
@@ -39,6 +48,21 @@ urlpatterns = [
         'cidadaos/importar-do-tefe/',
         ImportarCidadaoDoTefeView.as_view(),
         name='importar-cidadao-do-tefe'
+    ),
+    path(
+        'usuarios/operadores/buscar/',
+        BuscarOperadorView.as_view(),
+        name='buscar-operador',
+    ),
+    path(
+        'usuarios/liberar-operador/',
+        LiberarOperadorView.as_view(),
+        name='liberar-operador',
+    ),
+    path(
+        'usuarios/remover-operador/',
+        RemoverOperadorView.as_view(),
+        name='remover-operador',
     ),
     path(
         'cidadaos/<uuid:cidadao_id>/documentos/',
@@ -69,6 +93,39 @@ urlpatterns = [
         'beneficios/<uuid:beneficio_id>/cidadaos/',
         BeneficioCidadaosView.as_view(),
         name='beneficio-cidadaos'
+    ),
+
+    path(
+        'dashboard/stats/',
+        DashboardStatsView.as_view(),
+        name='dashboard-stats'
+    ),
+
+    # 🗺️ Geocodificação / Mapa de calor
+    path(
+        'geocodificacao/beneficiarios/processar/',
+        GeocodificarBeneficiariosView.as_view(),
+        name='geocodificar-beneficiarios',
+    ),
+    path(
+        'geocodificacao/beneficiarios/pendentes/',
+        BeneficiariosPendentesView.as_view(),
+        name='beneficiarios-pendentes',
+    ),
+    path(
+        'geocodificacao/enderecos/<uuid:cidadao_id>/manual/',
+        EnderecoCoordManualView.as_view(),
+        name='endereco-coord-manual',
+    ),
+    path(
+        'relatorios/mapa-calor-beneficiarios/',
+        MapaCalorBeneficiariosView.as_view(),
+        name='mapa-calor-beneficiarios',
+    ),
+    path(
+        'relatorios/mapa-calor-beneficiarios/resumo/',
+        MapaCalorResumoView.as_view(),
+        name='mapa-calor-beneficiarios-resumo',
     ),
 
     # 🚀 APIs principais

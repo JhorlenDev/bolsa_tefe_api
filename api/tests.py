@@ -1,9 +1,13 @@
 import os
 import shutil
 import tempfile
+from datetime import date, timedelta
+from unittest.mock import patch
+from django.core.cache import cache
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.utils import timezone
 from rest_framework import exceptions
 from rest_framework.test import APIClient, APIRequestFactory
 
@@ -28,6 +32,12 @@ from .services.importacao_cidadao_service import (
     LinhaImportacaoCidadao,
     importar_linhas_cidadaos,
 )
+from .services.keycloak_admin_service import (
+    KeycloakAdminNotFoundError,
+    KeycloakAdminPermissionError,
+)
+from .services import keycloak_admin_service
+from .services.status_atualizacao_service import salvar_status_atualizacao_cidadao
 
 
 class KeycloakUserSyncTests(TestCase):
@@ -139,6 +149,554 @@ class BaseApiTestCase(TestCase):
         self.user.jwt_roles = roles
 
 
+class StatusAtualizacaoCidadaoTests(BaseApiTestCase):
+    def _criar_anexo_obrigatorio(
+        self,
+        cidadao,
+        tipo_documento,
+        nome_arquivo,
+        sem_documento_no_momento=False,
+    ):
+        with override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT, MEDIA_URL='/media/'):
+            if sem_documento_no_momento:
+                return DocumentoAnexo.objects.create(
+                    cidadao=cidadao,
+                    tipo_documento=tipo_documento,
+                    arquivo=None,
+                    nome_arquivo='',
+                    extensao='',
+                    tamanho_bytes=0,
+                    status='SEM_DOCUMENTO_NO_MOMENTO',
+                    sem_documento_no_momento=True,
+                    sincronizado=True,
+                    status_sincronizacao='SINCRONIZADO',
+                )
+
+            return DocumentoAnexo.objects.create(
+                cidadao=cidadao,
+                tipo_documento=tipo_documento,
+                arquivo=SimpleUploadedFile(
+                    nome_arquivo,
+                    b'documento',
+                    content_type='image/jpeg',
+                ),
+                nome_arquivo=nome_arquivo,
+                extensao='jpg',
+                tamanho_bytes=9,
+                sincronizado=True,
+                status_sincronizacao='SINCRONIZADO',
+            )
+
+    def test_status_atualizacao_fica_pendente_com_dados_incompletos(self):
+        cidadao = Cidadao.objects.create(
+            nome='Cidadao Completo',
+            data_nascimento=date(1990, 1, 1),
+            naturalidade='Tefe',
+            escolaridade='FUNDAMENTAL_COMPLETO',
+            identidade_genero='FEMININO',
+            cor='PARDA',
+            estado_civil='SOLTEIRO',
+            autorizacao_uso_imagem=True,
+            sincronizado=True,
+            status_sincronizacao='SINCRONIZADO',
+        )
+
+        cidadao.refresh_from_db()
+        self.assertEqual(cidadao.status_atualizacao, 'PENDENTE')
+
+    def test_status_atualizacao_fica_desatualizado_com_cadastro_basico_invalido(self):
+        casos = (
+            ('naturalidade', ''),
+            ('cor', '-'),
+            ('escolaridade', 'NAO_INFORMADO'),
+            ('identidade_genero', 'NÃO INFORMADO'),
+            ('estado_civil', 'NAO_INFORMADO'),
+        )
+
+        for campo, valor in casos:
+            with self.subTest(campo=campo, valor=valor):
+                dados = {
+                    'nome': f'Cidadao {campo}',
+                    'data_nascimento': date(1990, 1, 1),
+                    'naturalidade': 'Tefe',
+                    'escolaridade': 'FUNDAMENTAL_COMPLETO',
+                    'identidade_genero': 'FEMININO',
+                    'cor': 'PARDA',
+                    'estado_civil': 'SOLTEIRO',
+                    'autorizacao_uso_imagem': True,
+                    'sincronizado': True,
+                    'status_sincronizacao': 'SINCRONIZADO',
+                }
+                dados[campo] = valor
+
+                cidadao = Cidadao.objects.create(**dados)
+
+                cidadao.refresh_from_db()
+                self.assertEqual(cidadao.status_atualizacao, 'DESATUALIZADO')
+
+    def test_status_atualizacao_toca_updated_em_para_sync_incremental(self):
+        cidadao = Cidadao.objects.create(
+            nome='Cidadao Incremental',
+            data_nascimento=date(1990, 1, 1),
+            sincronizado=True,
+            status_sincronizacao='SINCRONIZADO',
+        )
+
+        marcador_antigo = timezone.now() - timedelta(days=1)
+        Cidadao.objects.filter(pk=cidadao.pk).update(atualizado_em=marcador_antigo)
+
+        salvar_status_atualizacao_cidadao(cidadao)
+
+        cidadao.refresh_from_db()
+        self.assertEqual(cidadao.status_atualizacao, 'DESATUALIZADO')
+        self.assertGreater(cidadao.atualizado_em, marcador_antigo)
+
+        response = self.client.get(
+            '/api/cidadaos/',
+            {'updated_since': int(marcador_antigo.timestamp() * 1000)},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['id'], str(cidadao.id))
+
+    def test_status_atualizacao_transita_com_dados_completos(self):
+        cidadao = Cidadao.objects.create(
+            nome='Cidadao Completo',
+            data_nascimento=date(1990, 1, 1),
+            naturalidade='Tefe',
+            escolaridade='FUNDAMENTAL_COMPLETO',
+            identidade_genero='FEMININO',
+            cor='PARDA',
+            estado_civil='SOLTEIRO',
+            autorizacao_uso_imagem=True,
+            sincronizado=True,
+            status_sincronizacao='SINCRONIZADO',
+        )
+
+        Documento.objects.create(
+            cidadao=cidadao,
+            cpf='12345678901',
+            sincronizado=True,
+            status_sincronizacao='SINCRONIZADO',
+        )
+        Endereco.objects.create(
+            cidadao=cidadao,
+            tipo_localizacao='URBANO',
+            logradouro='Rua A',
+            bairro='Centro',
+            numero='10',
+            cep='69470000',
+            complemento='Casa',
+            situacao_imovel='PROPRIA',
+            material_parede='ALVENARIA',
+            qtd_comodos=4,
+            abastecimento_agua='REDE_PUBLICA',
+            sincronizado=True,
+            status_sincronizacao='SINCRONIZADO',
+        )
+        Socioeconomico.objects.create(
+            cidadao=cidadao,
+            renda_total='1000.00',
+            precedencia_rendimento='TRABALHO_FORMAL',
+            pessoas_com_rendimento=2,
+            sincronizado=True,
+            status_sincronizacao='SINCRONIZADO',
+        )
+        TermoResponsabilidade.objects.create(
+            cidadao=cidadao,
+            hora_termo='10:00',
+            sincronizado=True,
+            status_sincronizacao='SINCRONIZADO',
+        )
+
+        self._criar_anexo_obrigatorio(cidadao, 'rg_frente', 'rg_frente.jpg')
+        self._criar_anexo_obrigatorio(cidadao, 'rg_verso', 'rg_verso.jpg')
+        self._criar_anexo_obrigatorio(
+            cidadao,
+            'cpf',
+            'cpf.jpg',
+            sem_documento_no_momento=True,
+        )
+        self._criar_anexo_obrigatorio(
+            cidadao,
+            'certidao_nascimento',
+            'certidao_nascimento.jpg',
+        )
+        self._criar_anexo_obrigatorio(cidadao, 'quitacao_eleitoral', 'quitacao.jpg')
+        self._criar_anexo_obrigatorio(
+            cidadao,
+            'comprovante_residencia',
+            'comprovante.jpg',
+        )
+
+        cidadao.refresh_from_db()
+        self.assertEqual(cidadao.status_atualizacao, 'ATUALIZADO')
+
+        DocumentoAnexo.objects.filter(cidadao=cidadao, tipo_documento='cpf').delete()
+
+        cidadao.refresh_from_db()
+        self.assertEqual(cidadao.status_atualizacao, 'PENDENTE')
+
+    def test_status_atualizacao_aceita_renda_zero_sem_renda_com_uma_pessoa(self):
+        cidadao = Cidadao.objects.create(
+            nome='Cidadao Sem Renda',
+            data_nascimento=date(1990, 1, 1),
+            naturalidade='Tefe',
+            escolaridade='FUNDAMENTAL_COMPLETO',
+            identidade_genero='FEMININO',
+            cor='PARDA',
+            estado_civil='SOLTEIRO',
+            autorizacao_uso_imagem=True,
+            sincronizado=True,
+            status_sincronizacao='SINCRONIZADO',
+        )
+
+        Documento.objects.create(
+            cidadao=cidadao,
+            cpf='12345678901',
+            sincronizado=True,
+            status_sincronizacao='SINCRONIZADO',
+        )
+        Endereco.objects.create(
+            cidadao=cidadao,
+            tipo_localizacao='URBANO',
+            logradouro='Rua A',
+            bairro='Centro',
+            numero='10',
+            cep='69470000',
+            complemento='Casa',
+            situacao_imovel='PROPRIA',
+            material_parede='ALVENARIA',
+            qtd_comodos=4,
+            abastecimento_agua='REDE_PUBLICA',
+            sincronizado=True,
+            status_sincronizacao='SINCRONIZADO',
+        )
+        Socioeconomico.objects.create(
+            cidadao=cidadao,
+            renda_total='0.00',
+            precedencia_rendimento='SEM_RENDA',
+            pessoas_com_rendimento=1,
+            sincronizado=True,
+            status_sincronizacao='SINCRONIZADO',
+        )
+        TermoResponsabilidade.objects.create(
+            cidadao=cidadao,
+            hora_termo='10:00',
+            sincronizado=True,
+            status_sincronizacao='SINCRONIZADO',
+        )
+
+        self._criar_anexo_obrigatorio(cidadao, 'rg_frente', 'rg_frente.jpg')
+        self._criar_anexo_obrigatorio(cidadao, 'rg_verso', 'rg_verso.jpg')
+        self._criar_anexo_obrigatorio(cidadao, 'cpf', 'cpf.jpg')
+        self._criar_anexo_obrigatorio(
+            cidadao,
+            'certidao_nascimento',
+            'certidao_nascimento.jpg',
+        )
+        self._criar_anexo_obrigatorio(cidadao, 'quitacao_eleitoral', 'quitacao.jpg')
+        self._criar_anexo_obrigatorio(
+            cidadao,
+            'comprovante_residencia',
+            'comprovante.jpg',
+        )
+
+        cidadao.refresh_from_db()
+        self.assertEqual(cidadao.status_atualizacao, 'ATUALIZADO')
+
+
+class LiberarOperadorViewTests(BaseApiTestCase):
+    def setUp(self):
+        super().setUp()
+        self.set_roles(['USER-BOLSA-TEFE-ADMIN'])
+
+    def test_rejeita_requisicao_sem_cpf_ou_email(self):
+        response = self.client.post('/api/usuarios/liberar-operador/', {}, format='json')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('CPF ou o e-mail', response.data['detail'])
+
+    def test_exige_role_user_admin(self):
+        self.set_roles(['USER-BOLSA-TEFE'])
+
+        response = self.client.post(
+            '/api/usuarios/liberar-operador/',
+            {'cpf': '123.456.789-00'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    @patch('api.views.liberar_operador')
+    def test_liberar_operador_sucesso(self, mock_liberar_operador):
+        mock_liberar_operador.return_value = {
+            'detail': 'Operador liberado com sucesso.',
+            'role_adicionada': True,
+            'role_ja_existia': False,
+            'usuario': {
+                'id': 'user-id',
+                'username': 'operador.teste',
+                'email': 'operador@exemplo.com',
+                'cpf': '12345678900',
+            },
+        }
+
+        response = self.client.post(
+            '/api/usuarios/liberar-operador/',
+            {'cpf': '123.456.789-00'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data['role_adicionada'])
+        self.assertFalse(response.data['role_ja_existia'])
+
+    @patch('api.views.liberar_operador')
+    def test_liberar_operador_ja_possui_role(self, mock_liberar_operador):
+        mock_liberar_operador.return_value = {
+            'detail': 'O usuário já possui a role de operador.',
+            'role_adicionada': False,
+            'role_ja_existia': True,
+            'usuario': {
+                'id': 'user-id',
+                'username': 'operador.teste',
+                'email': 'operador@exemplo.com',
+                'cpf': '12345678900',
+            },
+        }
+
+        response = self.client.post(
+            '/api/usuarios/liberar-operador/',
+            {'email': 'operador@exemplo.com'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.data['role_adicionada'])
+        self.assertTrue(response.data['role_ja_existia'])
+
+    @patch('api.views.liberar_operador')
+    def test_liberar_operador_usuario_nao_encontrado(self, mock_liberar_operador):
+        mock_liberar_operador.side_effect = KeycloakAdminNotFoundError(
+            'Usuário não encontrado no Keycloak.'
+        )
+
+        response = self.client.post(
+            '/api/usuarios/liberar-operador/',
+            {'email': 'naoexiste@exemplo.com'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    @patch('api.views.liberar_operador')
+    def test_liberar_operador_keycloak_sem_permissao(self, mock_liberar_operador):
+        mock_liberar_operador.side_effect = KeycloakAdminPermissionError(
+            'O Keycloak recusou o acesso administrativo.'
+        )
+
+        response = self.client.post(
+            '/api/usuarios/liberar-operador/',
+            {'cpf': '123.456.789-00'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn('Keycloak', response.data['detail'])
+
+
+class RemoverOperadorViewTests(BaseApiTestCase):
+    def setUp(self):
+        super().setUp()
+        self.set_roles(['USER-BOLSA-TEFE-ADMIN'])
+
+    def test_rejeita_requisicao_sem_cpf_ou_email(self):
+        response = self.client.post('/api/usuarios/remover-operador/', {}, format='json')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('CPF ou o e-mail', response.data['detail'])
+
+    def test_exige_role_user_admin(self):
+        self.set_roles(['USER-BOLSA-TEFE'])
+
+        response = self.client.post(
+            '/api/usuarios/remover-operador/',
+            {'cpf': '123.456.789-00'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    @patch('api.views.remover_operador')
+    def test_remover_operador_sucesso(self, mock_remover_operador):
+        mock_remover_operador.return_value = {
+            'detail': 'Acesso de operador removido com sucesso.',
+            'role_removida': True,
+            'role_ja_ausente': False,
+            'usuario': {
+                'id': 'user-id',
+                'username': 'operador.teste',
+                'email': 'operador@exemplo.com',
+                'cpf': '12345678900',
+            },
+        }
+
+        response = self.client.post(
+            '/api/usuarios/remover-operador/',
+            {'cpf': '123.456.789-00'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data['role_removida'])
+        self.assertFalse(response.data['role_ja_ausente'])
+
+    @patch('api.views.remover_operador')
+    def test_remover_operador_sem_role(self, mock_remover_operador):
+        mock_remover_operador.return_value = {
+            'detail': 'O usuário não possui a role de operador.',
+            'role_removida': False,
+            'role_ja_ausente': True,
+            'usuario': {
+                'id': 'user-id',
+                'username': 'operador.teste',
+                'email': 'operador@exemplo.com',
+                'cpf': '12345678900',
+            },
+        }
+
+        response = self.client.post(
+            '/api/usuarios/remover-operador/',
+            {'email': 'operador@exemplo.com'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.data['role_removida'])
+        self.assertTrue(response.data['role_ja_ausente'])
+
+    @patch('api.views.remover_operador')
+    def test_remover_operador_usuario_nao_encontrado(self, mock_remover_operador):
+        mock_remover_operador.side_effect = KeycloakAdminNotFoundError(
+            'Usuário não encontrado no Keycloak.'
+        )
+
+        response = self.client.post(
+            '/api/usuarios/remover-operador/',
+            {'email': 'naoexiste@exemplo.com'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+
+class BuscarOperadorViewTests(BaseApiTestCase):
+    def setUp(self):
+        super().setUp()
+        self.set_roles(['USER-BOLSA-TEFE-ADMIN'])
+
+    def test_rejeita_requisicao_sem_cpf_ou_email(self):
+        response = self.client.get('/api/usuarios/operadores/buscar/')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('CPF ou o e-mail', response.data['detail'])
+
+    def test_exige_role_user_admin(self):
+        self.set_roles(['USER-BOLSA-TEFE'])
+
+        response = self.client.get('/api/usuarios/operadores/buscar/?cpf=12345678900')
+
+        self.assertEqual(response.status_code, 403)
+
+    @patch('api.views.buscar_usuario_operador')
+    def test_buscar_operador_sucesso(self, mock_buscar):
+        mock_buscar.return_value = {
+            'usuario': {
+                'id': 'user-id',
+                'username': 'operador.teste',
+                'email': 'operador@exemplo.com',
+                'cpf': '12345678900',
+            },
+            'is_operador': True,
+        }
+
+        response = self.client.get('/api/usuarios/operadores/buscar/?cpf=123.456.789-00')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data['is_operador'])
+        self.assertEqual(response.data['usuario']['cpf'], '12345678900')
+
+    @patch('api.views.buscar_usuario_operador')
+    def test_buscar_operador_nao_encontrado(self, mock_buscar):
+        mock_buscar.side_effect = KeycloakAdminNotFoundError(
+            'Usuário não encontrado no Keycloak.'
+        )
+
+        response = self.client.get(
+            '/api/usuarios/operadores/buscar/?email=naoexiste@exemplo.com'
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+
+class KeycloakAdminServiceTests(TestCase):
+    def setUp(self):
+        cache.clear()
+
+    @override_settings(
+        KEYCLOAK_CLIENT_ID='admin-client',
+        KEYCLOAK_CLIENT_SECRET='admin-secret',
+        KEYCLOAK_ISSUER='https://sso.tefe.am.gov.br/realms/prefeitura',
+    )
+    @patch('api.services.keycloak_admin_service._SESSION.post')
+    def test_obter_token_admin_usa_client_credentials(self, mock_post):
+        class _Response:
+            status_code = 200
+            text = '{"access_token": "adm-token", "expires_in": 300}'
+
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {'access_token': 'adm-token', 'expires_in': 300}
+
+        mock_post.return_value = _Response()
+
+        token = keycloak_admin_service._obter_token_admin()
+
+        self.assertEqual(token, 'adm-token')
+        args, kwargs = mock_post.call_args
+        self.assertEqual(
+            args[0],
+            'https://sso.tefe.am.gov.br/realms/prefeitura/protocol/openid-connect/token',
+        )
+        self.assertEqual(
+            kwargs['data'],
+            {
+                'client_id': 'admin-client',
+                'client_secret': 'admin-secret',
+                'grant_type': 'client_credentials',
+            },
+        )
+        self.assertEqual(kwargs['headers']['Content-Type'], 'application/x-www-form-urlencoded')
+
+    @patch('api.services.keycloak_admin_service._SESSION.request')
+    def test_request_admin_transforma_403_em_permissao(self, mock_request):
+        class _Response:
+            status_code = 403
+            text = 'Forbidden'
+
+        mock_request.return_value = _Response()
+
+        with self.assertRaises(KeycloakAdminPermissionError):
+            keycloak_admin_service._request_admin(
+                'GET',
+                'https://sso.tefe.am.gov.br/admin/realms/prefeitura/roles/USER-BOLSA-TEFE-ADMIN',
+            )
+
+
 TEST_MEDIA_ROOT = tempfile.mkdtemp(prefix='bolsa_tefe_test_media_')
 
 
@@ -210,6 +768,7 @@ class CidadaoApiTests(BaseApiTestCase):
             },
             'membros_familia': [
                 {
+                    'local_id': 'membro-001',
                     'nome_membro': 'Maria',
                     'parentesco': 'Conjuge',
                     'cpf_membro': '99988877766',
@@ -258,6 +817,7 @@ class CidadaoApiTests(BaseApiTestCase):
         )
         self.assertEqual(response.data['membros_familia'][0]['sexo'], 'FEMININO')
         self.assertTrue(response.data['membros_familia'][0]['possui_deficiencia'])
+        self.assertEqual(response.data['membros_familia'][0]['local_id'], 'membro-001')
         self.assertIn('escola_em_que_estuda', response.data['membros_familia'][0])
         self.assertEqual(
             response.data['termo_responsabilidade']['nome_responsavel'],
@@ -265,6 +825,7 @@ class CidadaoApiTests(BaseApiTestCase):
         )
         self.assertEqual(response.data['nome_responsavel'], 'Fulano de Tal')
         self.assertEqual(response.data['documentos_anexados'], [])
+        self.assertEqual(response.data['status_atualizacao'], 'PENDENTE')
 
     def test_aceita_payload_legado_flat_para_termo_e_servico_social(self):
         response = self.client.post(
@@ -315,7 +876,7 @@ class CidadaoApiTests(BaseApiTestCase):
             'Operador Local',
         )
 
-    def test_aceita_payload_offline_antigo_com_pending_minusculo_e_campos_locais(self):
+    def test_aceita_payload_offline_antigo_e_normaliza_para_sincronizado(self):
         response = self.client.post(
             '/api/cidadaos/',
             {
@@ -348,8 +909,11 @@ class CidadaoApiTests(BaseApiTestCase):
         )
 
         self.assertEqual(response.status_code, 201)
-        self.assertFalse(response.data['sincronizado'])
-        self.assertEqual(response.data['status_sincronizacao'], 'PENDENTE')
+        self.assertTrue(response.data['sincronizado'])
+        self.assertEqual(response.data['status_sincronizacao'], 'SINCRONIZADO')
+        self.assertFalse(response.data['pendente_sincronizacao'])
+        self.assertFalse(response.data['nao_sincronizado'])
+        self.assertIsNotNone(response.data['sincronizado_em'])
 
     def test_atualiza_cidadao_devolvendo_campos_novos_no_detalhe(self):
         response = self.client.post(
@@ -382,6 +946,7 @@ class CidadaoApiTests(BaseApiTestCase):
                 },
                 'membros_familia': [
                     {
+                        'local_id': 'membro-002',
                         'nome_membro': 'Filho',
                         'parentesco': 'Filho',
                         'sexo': 'MASCULINO',
@@ -412,11 +977,62 @@ class CidadaoApiTests(BaseApiTestCase):
             detail_response.data['termo_responsabilidade']['hora_termo'],
             '16:00',
         )
+        self.assertEqual(detail_response.data['membros_familia'][0]['local_id'], 'membro-002')
         self.assertIn('gestante', detail_response.data['membros_familia'][0])
         self.assertEqual(detail_response.data['membros_familia'][0]['sexo'], 'MASCULINO')
         self.assertIn('updated_at', detail_response.data)
         self.assertIn('created_at', detail_response.data)
         self.assertIn('situacaoBeneficiario', detail_response.data)
+
+    def test_patch_cidadao_aceita_nao_informado_em_choices_de_endereco(self):
+        response = self.client.post(
+            '/api/cidadaos/',
+            {
+                'nome': 'Cidadao Legacy',
+                'telefone': '92999990031',
+                'documentos': {'cpf': '90909090909'},
+                'endereco': {
+                    'tipo_localizacao': 'URBANO',
+                    'logradouro': 'Rua das Flores',
+                    'bairro': 'Centro',
+                    'numero': '12',
+                    'complemento': 'Casa 1',
+                    'situacao_imovel': 'PROPRIA',
+                    'material_parede': 'ALVENARIA',
+                    'qtd_comodos': 3,
+                    'possui_luz': True,
+                    'possui_asfalto': False,
+                    'possui_lixo': True,
+                    'abastecimento_agua': 'REDE_PUBLICA',
+                    'possui_saneamento': False,
+                },
+            },
+            format='json',
+        )
+        cidadao_id = response.data['id']
+
+        patch_response = self.client.patch(
+            f'/api/cidadaos/{cidadao_id}/',
+            {
+                'estado_civil': 'NAO_INFORMADO',
+                'endereco': {
+                    'situacao_imovel': 'NAO_INFORMADO',
+                    'abastecimento_agua': 'NAO_INFORMADO',
+                },
+            },
+            format='json',
+        )
+
+        self.assertEqual(patch_response.status_code, 200)
+        self.assertEqual(patch_response.data['estado_civil'], 'NAO_INFORMADO')
+        self.assertEqual(
+            patch_response.data['endereco']['situacao_imovel'],
+            'NAO_INFORMADO',
+        )
+        self.assertEqual(
+            patch_response.data['endereco']['abastecimento_agua'],
+            'NAO_INFORMADO',
+        )
 
     def test_patch_cidadao_invalido_registra_logs_e_retorna_erros(self):
         response = self.client.post(
@@ -999,6 +1615,55 @@ class CidadaoApiTests(BaseApiTestCase):
         self.assertIn('endereco', response.data['errors'])
         self.assertIn('distrito', response.data['errors']['endereco'])
 
+    def test_cria_endereco_rural_apenas_com_comunidade(self):
+        response = self.client.post(
+            '/api/cidadaos/',
+            {
+                'nome': 'Morador Comunidade',
+                'telefone': '92999990103',
+                'documentos': {'cpf': '55544433319'},
+                'endereco': {
+                    'tipo_localizacao': 'RURAL_DISTRITO',
+                    'logradouro': 'Ramal do Lago',
+                    'comunidade_localidade': 'Comunidade Sao Francisco',
+                    'numero': 'S/N',
+                },
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(
+            response.data['endereco']['tipo_localizacao'], 'RURAL_DISTRITO'
+        )
+        self.assertEqual(
+            response.data['endereco']['comunidade_localidade'],
+            'Comunidade Sao Francisco',
+        )
+
+    def test_cria_endereco_rural_apenas_com_distrito(self):
+        response = self.client.post(
+            '/api/cidadaos/',
+            {
+                'nome': 'Morador Distrito',
+                'telefone': '92999990104',
+                'documentos': {'cpf': '55544433318'},
+                'endereco': {
+                    'tipo_localizacao': 'RURAL_DISTRITO',
+                    'logradouro': 'Ramal do Lago',
+                    'distrito': 'Caiambé',
+                    'numero': 'S/N',
+                },
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(
+            response.data['endereco']['tipo_localizacao'], 'RURAL_DISTRITO'
+        )
+        self.assertEqual(response.data['endereco']['distrito'], 'Caiambé')
+
     def test_inferir_endereco_rural_legado_a_partir_de_bairro_especial(self):
         response = self.client.post(
             '/api/cidadaos/',
@@ -1089,7 +1754,7 @@ class CidadaoApiTests(BaseApiTestCase):
         self.assertEqual(item['endereco']['bairro'], '')
         self.assertEqual(item['endereco']['comunidade_localidade'], 'PORTO PRAIA')
 
-    def test_cria_cidadao_pendente_quando_payload_indica_nao_sincronizado(self):
+    def test_cria_cidadao_sincronizado_quando_payload_indica_nao_sincronizado(self):
         response = self.client.post(
             '/api/cidadaos/',
             {
@@ -1105,11 +1770,12 @@ class CidadaoApiTests(BaseApiTestCase):
         )
 
         self.assertEqual(response.status_code, 201)
-        self.assertFalse(response.data['sincronizado'])
-        self.assertEqual(response.data['status_sincronizacao'], 'PENDENTE')
-        self.assertTrue(response.data['pendente_sincronizacao'])
-        self.assertTrue(response.data['nao_sincronizado'])
-        self.assertIsNone(response.data['sincronizado_em'])
+        self.assertTrue(response.data['sincronizado'])
+        self.assertEqual(response.data['status_sincronizacao'], 'SINCRONIZADO')
+        self.assertFalse(response.data['pendente_sincronizacao'])
+        self.assertFalse(response.data['nao_sincronizado'])
+        self.assertIsNotNone(response.data['sincronizado_em'])
+        self.assertEqual(response.data['status_atualizacao'], 'PENDENTE')
         self.assertEqual(response.data['documentos']['cpf'], '11122233344')
 
     def test_lista_cidadaos_exibe_sincronizados_e_pendentes(self):
@@ -1280,6 +1946,84 @@ class BeneficiarioApiTests(BaseApiTestCase):
             response.data['non_field_errors'][0],
             'Este cidadão já está vinculado a este benefício.',
         )
+
+    def test_sincronizacao_de_vinculos_nao_faz_n_plus_um(self):
+        for index in range(5):
+            cidadao = Cidadao.objects.create(
+                nome=f'Cidadao Vinculo {index}',
+                telefone=f'92999990{index:03d}',
+                sincronizado=True,
+                status_sincronizacao='SINCRONIZADO',
+            )
+            Documento.objects.create(
+                cidadao=cidadao,
+                cpf=f'12345678{index:03d}',
+                sincronizado=True,
+                status_sincronizacao='SINCRONIZADO',
+            )
+            Beneficiario.objects.create(
+                cidadao=cidadao,
+                beneficio=self.beneficio,
+                status='EM_ANALISE',
+                atualizado_por=self.user,
+                sincronizado=True,
+                status_sincronizacao='SINCRONIZADO',
+            )
+
+        with self.assertNumQueries(1):
+            response = self.client.get('/api/beneficiarios/?updated_since=0')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 5)
+        self.assertEqual(response.data[0]['atualizado_por_nome'], 'api-user')
+
+    def test_sincroniza_vinculos_em_lote_criando_e_atualizando(self):
+        outro_beneficio = Beneficio.objects.create(
+            nome='Auxilio Extra',
+            descricao='Beneficio extra.',
+            ativo=True,
+            sincronizado=True,
+            status_sincronizacao='SINCRONIZADO',
+        )
+        Beneficiario.objects.create(
+            cidadao=self.cidadao,
+            beneficio=self.beneficio,
+            status='EM_ANALISE',
+            sincronizado=False,
+            status_sincronizacao='PENDENTE',
+        )
+
+        response = self.client.post(
+            '/api/beneficiarios/sincronizar/',
+            {
+                'vinculos': [
+                    {
+                        'cidadao': str(self.cidadao.id),
+                        'beneficio': str(self.beneficio.id),
+                        'status': 'APROVADO',
+                    },
+                    {
+                        'cidadao_id': str(self.cidadao.id),
+                        'beneficio_id': str(outro_beneficio.id),
+                        'status': 'EM_ANALISE',
+                    },
+                ]
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 2)
+        self.assertEqual(Beneficiario.objects.count(), 2)
+
+        vinculo_atualizado = Beneficiario.objects.get(
+            cidadao=self.cidadao,
+            beneficio=self.beneficio,
+        )
+        self.assertEqual(vinculo_atualizado.status, 'APROVADO')
+        self.assertTrue(vinculo_atualizado.sincronizado)
+        self.assertEqual(vinculo_atualizado.status_sincronizacao, 'SINCRONIZADO')
+        self.assertEqual(vinculo_atualizado.atualizado_por, self.user)
 
     def test_lista_vinculos_por_rota_aninhada_do_cidadao(self):
         vinculo = Beneficiario.objects.create(
@@ -1868,6 +2612,64 @@ class DocumentoAnexoApiTests(BaseApiTestCase):
             detail_response.data['documentosAnexados'][0]['tipo_documento'],
             'rg_frente',
         )
+
+    def test_cria_documento_sem_arquivo_com_flag_sem_documento(self):
+        response = self.client.post(
+            f'/api/cidadaos/{self.cidadao.id}/documentos/',
+            {
+                'tipo_documento': 'cpf',
+                'sem_documento_no_momento': 'true',
+                'substituir': 'true',
+            },
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data['tipo_documento'], 'cpf')
+        self.assertTrue(response.data['sem_documento_no_momento'])
+        self.assertEqual(response.data['status'], 'SEM_DOCUMENTO_NO_MOMENTO')
+        self.assertEqual(response.data['status_sincronizacao'], 'SINCRONIZADO')
+        self.assertEqual(response.data['nome_arquivo'], '')
+        self.assertEqual(response.data['extensao'], '')
+        self.assertEqual(response.data['tamanho_bytes'], 0)
+        self.assertTrue(response.data['sincronizado'])
+
+        documento = DocumentoAnexo.objects.get(
+            cidadao=self.cidadao,
+            tipo_documento='cpf',
+        )
+        self.assertTrue(documento.sem_documento_no_momento)
+        self.assertIsNone(documento.arquivo.name or None)
+
+    def test_substitui_documento_por_sem_documento_sem_duplicar_registro(self):
+        primeira_resposta = self.client.post(
+            f'/api/cidadaos/{self.cidadao.id}/documentos/',
+            {
+                'tipo_documento': 'cpf',
+                'arquivo': self._pdf_file('cpf.pdf'),
+                'substituir': 'true',
+            },
+        )
+        self.assertEqual(primeira_resposta.status_code, 201)
+        documento_id = primeira_resposta.data['id']
+        primeiro_arquivo = DocumentoAnexo.objects.get(id=documento_id).arquivo.path
+
+        segunda_resposta = self.client.post(
+            f'/api/cidadaos/{self.cidadao.id}/documentos/',
+            {
+                'tipo_documento': 'cpf',
+                'sem_documento_no_momento': 'true',
+                'substituir': 'true',
+            },
+        )
+
+        self.assertEqual(segunda_resposta.status_code, 200)
+        self.assertEqual(segunda_resposta.data['id'], documento_id)
+        self.assertTrue(segunda_resposta.data['sem_documento_no_momento'])
+        self.assertEqual(segunda_resposta.data['status'], 'SEM_DOCUMENTO_NO_MOMENTO')
+        self.assertEqual(DocumentoAnexo.objects.filter(cidadao=self.cidadao).count(), 1)
+        documento = DocumentoAnexo.objects.get(id=documento_id)
+        self.assertTrue(documento.sem_documento_no_momento)
+        self.assertFalse(os.path.exists(primeiro_arquivo))
 
     def test_upload_rg_verso_em_registro_separado(self):
         self.client.post(

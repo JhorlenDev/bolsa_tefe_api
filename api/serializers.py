@@ -123,6 +123,15 @@ def normalize_endereco_payload(payload, instance=None):
             getattr(current, 'comunidade_localidade', None),
         )
     )
+    qtd_comodos = normalized.get('qtd_comodos', getattr(current, 'qtd_comodos', None))
+    if qtd_comodos in (None, ''):
+        normalized['qtd_comodos'] = 1
+    else:
+        try:
+            qtd_comodos_int = int(qtd_comodos)
+        except (TypeError, ValueError):
+            qtd_comodos_int = 1
+        normalized['qtd_comodos'] = max(qtd_comodos_int, 1)
 
     is_rural = _endereco_is_rural_from_values(
         tipo_localizacao,
@@ -232,39 +241,12 @@ class SincronizacaoMixin:
         return super().to_internal_value(incoming)
 
     def _apply_sync_fields(self, attrs):
-        sync_fields_present = any(
-            key in attrs for key in ('sincronizado', 'status_sincronizacao', 'sincronizado_em')
-        )
-        sincronizado = attrs.get(
-            'sincronizado',
-            getattr(self.instance, 'sincronizado', True),
-        )
-        status_sincronizacao = attrs.get(
-            'status_sincronizacao',
-            getattr(self.instance, 'status_sincronizacao', None),
-        )
-        sincronizado_em = attrs.get(
-            'sincronizado_em',
-            getattr(self.instance, 'sincronizado_em', None),
-        )
-
-        if not sync_fields_present:
-            attrs['sincronizado'] = True
-            attrs['status_sincronizacao'] = 'SINCRONIZADO'
-            attrs['sincronizado_em'] = sincronizado_em or timezone.now()
-            return attrs
-
-        if status_sincronizacao is None:
-            status_sincronizacao = 'SINCRONIZADO' if sincronizado else 'PENDENTE'
-
-        if status_sincronizacao == 'SINCRONIZADO':
-            attrs['sincronizado'] = True
-            attrs['sincronizado_em'] = sincronizado_em or timezone.now()
-        else:
-            attrs['sincronizado'] = False
-            attrs['sincronizado_em'] = None
-
-        attrs['status_sincronizacao'] = status_sincronizacao
+        # O servidor é a fonte central. Ao aceitar a gravação, o registro
+        # passa a estar sincronizado no backend, independentemente do estado
+        # temporário informado pelo cliente local.
+        attrs['sincronizado'] = True
+        attrs['status_sincronizacao'] = 'SINCRONIZADO'
+        attrs['sincronizado_em'] = timezone.now()
         return attrs
 
 
@@ -310,6 +292,12 @@ class DocumentoAnexoSerializer(serializers.ModelSerializer):
             'tamanho_bytes',
             'data_envio',
             'status',
+            'sem_documento_no_momento',
+            'sincronizado',
+            'status_sincronizacao',
+            'sincronizado_em',
+            'criado_em',
+            'atualizado_em',
         ]
         read_only_fields = fields
 
@@ -356,13 +344,20 @@ class EnderecoSerializer(SincronizacaoMixin, serializers.ModelSerializer):
             'abastecimento_agua',
             'abastecimento_agua_outro',
             'possui_saneamento',
+            'latitude',
+            'longitude',
+            'precisao_geocodificacao',
+            'geocodificacao_status',
             'sincronizado',
             'status_sincronizacao',
             'sincronizado_em',
             'criado_em',
             'atualizado_em',
         ]
-        read_only_fields = ('id', 'criado_em', 'atualizado_em')
+        read_only_fields = (
+            'id', 'criado_em', 'atualizado_em',
+            'latitude', 'longitude', 'precisao_geocodificacao', 'geocodificacao_status',
+        )
 
     def validate(self, attrs):
         attrs = normalize_endereco_payload(attrs, instance=self.instance)
@@ -401,15 +396,12 @@ class EnderecoSerializer(SincronizacaoMixin, serializers.ModelSerializer):
             attrs['abastecimento_agua_outro'] = None
 
         if tipo_localizacao == 'RURAL_DISTRITO':
-            if not distrito:
-                raise serializers.ValidationError(
-                    {'distrito': 'Informe o distrito para endereço rural/distrito.'}
-                )
-            if not comunidade_localidade:
+            if not distrito and not comunidade_localidade:
                 raise serializers.ValidationError(
                     {
-                        'comunidade_localidade': (
-                            'Informe a comunidade/localidade para endereço rural.'
+                        'distrito': (
+                            'Informe o distrito ou a comunidade/localidade '
+                            'para endereço rural/distrito.'
                         )
                     }
                 )
@@ -446,6 +438,7 @@ class FamiliaMembroSerializer(SincronizacaoMixin, serializers.ModelSerializer):
         model = FamiliaMembro
         fields = [
             'id',
+            'local_id',
             'nome_membro',
             'parentesco',
             'cpf_membro',
@@ -476,13 +469,30 @@ class FamiliaMembroSerializer(SincronizacaoMixin, serializers.ModelSerializer):
     def to_internal_value(self, data):
         incoming = data.copy()
 
+        if 'status_sincronizacao' in incoming:
+            value = incoming.get('status_sincronizacao')
+            if isinstance(value, str):
+                normalized = value.strip().upper()
+                aliases = {
+                    'SYNCED': 'SINCRONIZADO',
+                    'SINCRONIZADO': 'SINCRONIZADO',
+                    'PENDING': 'PENDENTE',
+                    'PENDENTE': 'PENDENTE',
+                    'ERROR': 'ERRO',
+                    'ERRO': 'ERRO',
+                }
+                incoming['status_sincronizacao'] = aliases.get(normalized, normalized)
+
         if 'escola' in incoming and 'escola_em_que_estuda' not in incoming:
             incoming['escola_em_que_estuda'] = incoming.get('escola')
 
         if 'sem_cpf' in incoming and 'nao_possui_cpf' not in incoming:
             incoming['nao_possui_cpf'] = incoming.get('sem_cpf')
 
-        return super().to_internal_value(incoming)
+        for field in ('created_at', 'updated_at', 'deleted'):
+            incoming.pop(field, None)
+
+        return serializers.ModelSerializer.to_internal_value(self, incoming)
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -772,6 +782,16 @@ class SocioeconomicoSerializer(SincronizacaoMixin, serializers.ModelSerializer):
 
         if incoming.get('servicos_sociais') in (None, ''):
             incoming['servicos_sociais'] = []
+
+        pessoas_com_rendimento = incoming.get('pessoas_com_rendimento')
+        if pessoas_com_rendimento in (None, ''):
+            incoming['pessoas_com_rendimento'] = 1
+        else:
+            try:
+                pessoas_int = int(pessoas_com_rendimento)
+            except (TypeError, ValueError):
+                pessoas_int = 1
+            incoming['pessoas_com_rendimento'] = max(pessoas_int, 1)
 
         return super().to_internal_value(incoming)
 
@@ -1078,6 +1098,7 @@ class CidadaoSerializer(SincronizacaoMixin, serializers.ModelSerializer):
             'sincronizado',
             'status_sincronizacao',
             'sincronizado_em',
+            'status_atualizacao',
             'pendente_sincronizacao',
             'nao_sincronizado',
             'situacaoBeneficiario',
@@ -1102,6 +1123,7 @@ class CidadaoSerializer(SincronizacaoMixin, serializers.ModelSerializer):
             'atualizado_em',
             'pendente_sincronizacao',
             'nao_sincronizado',
+            'status_atualizacao',
             'nome_responsavel',
             'local_termo',
             'data_termo',
@@ -1154,6 +1176,11 @@ class CidadaoSerializer(SincronizacaoMixin, serializers.ModelSerializer):
         return int(obj.atualizado_em.timestamp() * 1000) if getattr(obj, 'atualizado_em', None) else None
 
     def get_situacaoBeneficiario(self, obj):
+        vinculos_prefetched = getattr(obj, 'beneficios_recebidos_ordenados', None)
+        if vinculos_prefetched is not None:
+            vinculo = vinculos_prefetched[0] if vinculos_prefetched else None
+            return vinculo.status if vinculo else None
+
         vinculo = obj.beneficios_recebidos.order_by('criado_em').first()
         return vinculo.status if vinculo else None
 
@@ -1292,6 +1319,8 @@ class CidadaoSerializer(SincronizacaoMixin, serializers.ModelSerializer):
                     **termo_responsabilidade_data,
                 )
 
+            cidadao.refresh_from_db()
+
         return cidadao
 
     def update(self, instance, validated_data):
@@ -1356,7 +1385,43 @@ class CidadaoSerializer(SincronizacaoMixin, serializers.ModelSerializer):
                 if membro_id not in enviados:
                     membro.delete()
 
+        instance.refresh_from_db()
+
         return instance
+
+
+class CidadaoListSerializer(serializers.ModelSerializer):
+    endereco = EnderecoSerializer(read_only=True)
+    pendente_sincronizacao = serializers.SerializerMethodField()
+    nao_sincronizado = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Cidadao
+        fields = [
+            'id',
+            'nome',
+            'nis',
+            'data_nascimento',
+            'telefone',
+            'email',
+            'sincronizado',
+            'status_sincronizacao',
+            'sincronizado_em',
+            'status_atualizacao',
+            'pendente_sincronizacao',
+            'nao_sincronizado',
+            'endereco',
+            'criado_em',
+            'atualizado_em',
+        ]
+
+    @extend_schema_field(OpenApiTypes.BOOL)
+    def get_pendente_sincronizacao(self, obj):
+        return obj.status_sincronizacao == 'PENDENTE'
+
+    @extend_schema_field(OpenApiTypes.BOOL)
+    def get_nao_sincronizado(self, obj):
+        return obj.status_sincronizacao != 'SINCRONIZADO'
 
 
 class BeneficioSerializer(SincronizacaoMixin, serializers.ModelSerializer):

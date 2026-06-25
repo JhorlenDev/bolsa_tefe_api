@@ -34,12 +34,14 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'drf_spectacular',
+    'corsheaders',
     'api',
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.middleware.gzip.GZipMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -194,7 +196,8 @@ LOGGING = {
 
 KEYCLOAK_SERVER_URL = 'https://sso.tefe.am.gov.br'
 KEYCLOAK_REALM = 'prefeitura'
-KEYCLOAK_CLIENT_ID = 'app-mobile'
+KEYCLOAK_CLIENT_ID = config('KEYCLOAK_CLIENT_ID', default='app-mobile')
+KEYCLOAK_CLIENT_SECRET = config('KEYCLOAK_CLIENT_SECRET', default='')
 
 KEYCLOAK_ISSUER = f"{KEYCLOAK_SERVER_URL}/realms/{KEYCLOAK_REALM}"
 KEYCLOAK_JWKS_URL = f"{KEYCLOAK_ISSUER}/protocol/openid-connect/certs"
@@ -210,3 +213,13 @@ TEFE_HTTP_TIMEOUT = config('TEFE_HTTP_TIMEOUT', default=15, cast=int)
 TEFE_TOKEN_CACHE_TIMEOUT = config('TEFE_TOKEN_CACHE_TIMEOUT', default=300, cast=int)
 TEFE_CIDADAO_CACHE_TIMEOUT = config('TEFE_CIDADAO_CACHE_TIMEOUT', default=120, cast=int)
 KEYCLOAK_JWKS_CACHE_TIMEOUT = config('KEYCLOAK_JWKS_CACHE_TIMEOUT', default=3600, cast=int)
+
+# Geocodificação — se vazio, usa Nominatim/OSM (grátis); se preenchido, usa Google Geocoding.
+GOOGLE_GEOCODING_API_KEY = config('GOOGLE_GEOCODING_API_KEY', default='')
+
+CORS_ALLOW_ALL_ORIGINS = DEBUG
+CORS_ALLOWED_ORIGINS = [
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+]
+CORS_ALLOW_CREDENTIALS = True
