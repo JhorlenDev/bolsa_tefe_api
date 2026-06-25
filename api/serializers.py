@@ -1404,6 +1404,7 @@ class CidadaoListSerializer(serializers.ModelSerializer):
             'data_nascimento',
             'telefone',
             'email',
+            'identidade_genero',
             'sincronizado',
             'status_sincronizacao',
             'sincronizado_em',
