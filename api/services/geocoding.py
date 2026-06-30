@@ -3,13 +3,16 @@
 Toda a geocodificação acontece no backend e o resultado é persistido no
 ``Endereco``. O frontend apenas consome ``latitude``/``longitude`` já salvas.
 
-Estratégia de fallback (do mais preciso para o menos preciso):
+Estratégia de fallback (prioriza cair no BAIRRO certo, não na rua):
 
-    1. Rua + número + localidade + Tefé/AM  -> ENDERECO_EXATO
-    2. Rua + localidade + Tefé/AM           -> RUA
-    3. Localidade + Tefé/AM                  -> LOCALIDADE
+    1. Rua + número + localidade + Tefé/AM  -> ENDERECO_EXATO (validação rígida
+       do bairro; se não confirmar, é descartado e cai pro item 2)
+    2. Cada localidade isolada (comunidade -> bairro -> distrito) + Tefé/AM
+       -> LOCALIDADE (centro do bairro)
+    3. Sem nenhuma localidade: Rua + número + Tefé/AM -> ENDERECO_EXATO
 
-Onde ``localidade`` = comunidade_localidade, ou bairro, ou distrito.
+Nunca usamos "rua sem número": em Tefé há a mesma rua em bairros diferentes,
+então o Google casava a rua no bairro errado. Bairro vem antes da rua.
 """
 
 import logging
@@ -39,10 +42,12 @@ _cache = {}
 # (esquerda, topo, direita, base) = (lon_min, lat_max, lon_max, lat_min)
 _VIEWBOX = '-65.6,-2.7,-63.8,-4.2'
 
-# Bounding box (generoso) do município de Tefé e suas localidades/comunidades
+# Bounding box do município de Tefé e suas localidades/comunidades
 # (Caiambé, Porto Praia, Santo Isidoro, etc.). Resultados fora disso são descartados.
-TEFE_LAT_MIN, TEFE_LAT_MAX = -5.0, -2.2
-TEFE_LON_MIN, TEFE_LON_MAX = -66.0, -63.2
+# Apertada para o tamanho real do município — a caixa antiga (~310×310 km) era
+# generosa demais e aceitava geocodes errados em outras cidades.
+TEFE_LAT_MIN, TEFE_LAT_MAX = -4.4, -2.8
+TEFE_LON_MIN, TEFE_LON_MAX = -65.8, -63.8
 # Para o parâmetro 'bounds' do Google: "sul,oeste|norte,leste"
 GOOGLE_BOUNDS = f'{TEFE_LAT_MIN},{TEFE_LON_MIN}|{TEFE_LAT_MAX},{TEFE_LON_MAX}'
 
@@ -78,28 +83,34 @@ def montar_variacoes(endereco):
     """Retorna lista de (query, precisao) na ordem do fallback, sem duplicatas."""
     rua = (endereco.logradouro or '').strip()
     numero = (endereco.numero or '').strip()
-    localidade = (
-        (endereco.comunidade_localidade or '').strip()
-        or (endereco.bairro or '').strip()
-        or (endereco.distrito or '').strip()
-    )
+    # Todas as localidades disponíveis, da mais específica para a mais ampla.
+    # Cada uma vira uma tentativa própria — se a comunidade não for encontrada,
+    # ainda tentamos o bairro e, por fim, o distrito.
+    localidades = []
+    for valor in (
+        (endereco.comunidade_localidade or '').strip(),
+        (endereco.bairro or '').strip(),
+        (endereco.distrito or '').strip(),
+    ):
+        if valor and valor not in localidades:
+            localidades.append(valor)
+
+    localidade_principal = localidades[0] if localidades else ''
 
     variacoes = []
 
-    # Tentativa 1 — endereço exato (rua + número + localidade)
-    if rua and numero and localidade:
-        variacoes.append((f'{rua}, {numero}, {localidade}, Tefé, AM, Brasil', 'ENDERECO_EXATO'))
-    # Tentativa 2 — rua + localidade
-    if rua and localidade:
-        variacoes.append((f'{rua}, {localidade}, Tefé, AM, Brasil', 'RUA'))
-    # Tentativa 3 — apenas localidade
-    if localidade:
-        variacoes.append((f'{localidade}, Tefé, AM, Brasil', 'LOCALIDADE'))
-    # Fallbacks quando não há localidade, apenas rua
-    if rua and not localidade:
-        if numero:
-            variacoes.append((f'{rua}, {numero}, Tefé, AM, Brasil', 'ENDERECO_EXATO'))
-        variacoes.append((f'{rua}, Tefé, AM, Brasil', 'RUA'))
+    # Tentativa 1 — endereço exato (rua + número + localidade principal).
+    # Validado de forma rígida em geocodificar_endereco: se o bairro não for
+    # confirmado no retorno, é descartado e cai para o bairro (item 2).
+    if rua and numero and localidade_principal:
+        variacoes.append((f'{rua}, {numero}, {localidade_principal}, Tefé, AM, Brasil', 'ENDERECO_EXATO'))
+    # Tentativa 2 — bairro/localidade isolada (comunidade -> bairro -> distrito),
+    # ANTES de qualquer tentativa por rua, para nunca jogar no bairro errado.
+    for loc in localidades:
+        variacoes.append((f'{loc}, Tefé, AM, Brasil', 'LOCALIDADE'))
+    # Tentativa 3 — sem nenhuma localidade: só rua COM número (nunca rua sem número).
+    if rua and numero and not localidade_principal:
+        variacoes.append((f'{rua}, {numero}, Tefé, AM, Brasil', 'ENDERECO_EXATO'))
 
     # Remove duplicatas preservando a ordem.
     vistas = set()
