@@ -344,6 +344,13 @@ class EnderecoSerializer(SincronizacaoMixin, serializers.ModelSerializer):
             'abastecimento_agua',
             'abastecimento_agua_outro',
             'possui_saneamento',
+            'iluminacao_publica',
+            'risco_inundacao',
+            'risco_enchente',
+            'risco_deslizamento',
+            'possui_doc_posse',
+            'doc_posse_descricao',
+            'motivo_terceiros',
             'latitude',
             'longitude',
             'precisao_geocodificacao',
@@ -733,6 +740,7 @@ class SocioeconomicoSerializer(SincronizacaoMixin, serializers.ModelSerializer):
         fields = [
             'id',
             'renda_total',
+            'faixa_renda',
             'precedencia_rendimento',
             'pessoas_com_rendimento',
             'recebe_beneficio',
@@ -771,6 +779,12 @@ class SocioeconomicoSerializer(SincronizacaoMixin, serializers.ModelSerializer):
     def to_internal_value(self, data):
         incoming = data.copy()
         legacy_service_value = incoming.get('utiliza_servico_social')
+
+        renda_total = incoming.get('renda_total')
+        if renda_total in (None, ''):
+            incoming['renda_total'] = '0.00'
+        elif isinstance(renda_total, str):
+            incoming['renda_total'] = renda_total.strip() or '0.00'
 
         if isinstance(legacy_service_value, str):
             value = legacy_service_value.strip()
@@ -1006,6 +1020,7 @@ class TermoResponsabilidadeSerializer(SincronizacaoMixin, serializers.ModelSeria
         fields = [
             'id',
             'nome_responsavel',
+            'funcao',
             'local_termo',
             'data_termo',
             'hora_termo',
@@ -1078,6 +1093,9 @@ class CidadaoSerializer(SincronizacaoMixin, serializers.ModelSerializer):
             'telefone',
             'email',
             'naturalidade',
+            'ocupacao',
+            'possui_carteira_trabalho',
+            'encaminhamentos',
             'escolaridade',
             'identidade_genero',
             'cor',
@@ -1434,6 +1452,7 @@ class BeneficioSerializer(SincronizacaoMixin, serializers.ModelSerializer):
             'id',
             'nome',
             'descricao',
+            'icone',
             'ativo',
             'atualizado_por',
             'atualizado_por_nome',

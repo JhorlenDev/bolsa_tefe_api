@@ -26,6 +26,11 @@ from .views import (
     MapaCalorBeneficiariosView,
     MapaCalorResumoView,
     EnderecoCoordManualView,
+    EnderecoReverseGeocodeView,
+    EnderecoCamposView,
+    LocalidadesView,
+    LocalidadeDetailView,
+    LocalidadesAplicarView,
 )
 
 router = DefaultRouter()
@@ -118,6 +123,16 @@ urlpatterns = [
         name='endereco-coord-manual',
     ),
     path(
+        'geocodificacao/reverse/',
+        EnderecoReverseGeocodeView.as_view(),
+        name='endereco-reverse',
+    ),
+    path(
+        'geocodificacao/enderecos/<uuid:cidadao_id>/campos/',
+        EnderecoCamposView.as_view(),
+        name='endereco-campos',
+    ),
+    path(
         'relatorios/mapa-calor-beneficiarios/',
         MapaCalorBeneficiariosView.as_view(),
         name='mapa-calor-beneficiarios',
@@ -126,6 +141,21 @@ urlpatterns = [
         'relatorios/mapa-calor-beneficiarios/resumo/',
         MapaCalorResumoView.as_view(),
         name='mapa-calor-beneficiarios-resumo',
+    ),
+    path(
+        'relatorios/localidades/',
+        LocalidadesView.as_view(),
+        name='localidades',
+    ),
+    path(
+        'relatorios/localidades/aplicar/',
+        LocalidadesAplicarView.as_view(),
+        name='localidades-aplicar',
+    ),
+    path(
+        'relatorios/localidades/<uuid:pk>/',
+        LocalidadeDetailView.as_view(),
+        name='localidade-detail',
     ),
 
     # 🚀 APIs principais

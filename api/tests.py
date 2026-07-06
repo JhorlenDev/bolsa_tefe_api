@@ -1164,6 +1164,32 @@ class CidadaoApiTests(BaseApiTestCase):
         self.assertFalse(detail_response.data['socioeconomico']['cidadao_estava_em_casa'])
         self.assertTrue(detail_response.data['socioeconomico']['ja_foi_visitado'])
 
+    def test_patch_cidadao_accepts_blank_socioeconomico_renda_total(self):
+        response = self.client.post(
+            '/api/cidadaos/',
+            {
+                'nome': 'Renda Vazia',
+                'telefone': '92999990021',
+                'documentos': {'cpf': '32132132199'},
+            },
+            format='json',
+        )
+        cidadao_id = response.data['id']
+
+        patch_response = self.client.patch(
+            f'/api/cidadaos/{cidadao_id}/',
+            {
+                'socioeconomico': {
+                    'renda_total': '',
+                    'faixa_renda': 'ATE_1_SM',
+                },
+            },
+            format='json',
+        )
+
+        self.assertEqual(patch_response.status_code, 200)
+        self.assertEqual(patch_response.data['socioeconomico']['renda_total'], '0.00')
+
     def test_cria_membro_familia_com_cpf_e_retorna_nao_possui_cpf_false(self):
         response = self.client.post(
             '/api/cidadaos/',
@@ -1921,6 +1947,10 @@ class BeneficiarioApiTests(BaseApiTestCase):
         self.assertTrue(response.data['beneficio_ativo'])
         self.assertEqual(response.data['status'], 'EM_ANALISE')
         self.assertEqual(response.data['beneficio_status'], 'EM_ANALISE')
+        self.assertEqual(
+            Beneficiario.objects.get().situacao_cadastro,
+            'EM_ANALISE',
+        )
 
 
     def test_nao_permite_vinculo_duplicado_para_mesmo_beneficio(self):
@@ -2021,6 +2051,7 @@ class BeneficiarioApiTests(BaseApiTestCase):
             beneficio=self.beneficio,
         )
         self.assertEqual(vinculo_atualizado.status, 'APROVADO')
+        self.assertEqual(vinculo_atualizado.situacao_cadastro, 'APROVADO')
         self.assertTrue(vinculo_atualizado.sincronizado)
         self.assertEqual(vinculo_atualizado.status_sincronizacao, 'SINCRONIZADO')
         self.assertEqual(vinculo_atualizado.atualizado_por, self.user)
@@ -2062,6 +2093,10 @@ class BeneficiarioApiTests(BaseApiTestCase):
         self.assertEqual(response.data['beneficio_id'], str(self.beneficio.id))
         self.assertEqual(response.data['beneficio_nome'], 'Auxilio Municipal')
         self.assertEqual(response.data['beneficio_status'], 'EM_ANALISE')
+        self.assertEqual(
+            Beneficiario.objects.get().situacao_cadastro,
+            'EM_ANALISE',
+        )
 
     def test_cria_vinculo_por_rota_aninhada_aceitando_beneficio_id_do_front(self):
         response = self.client.post(
@@ -2112,6 +2147,10 @@ class BeneficiarioApiTests(BaseApiTestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['status'], 'APROVADO')
+        self.assertEqual(
+            Beneficiario.objects.get().situacao_cadastro,
+            'APROVADO',
+        )
 
     def test_lista_cidadaos_vinculados_ao_beneficio(self):
         outro_cidadao = Cidadao.objects.create(
@@ -2523,13 +2562,14 @@ class BeneficioAdminApiTests(BaseApiTestCase):
 
         response = self.client.patch(
             f'/api/beneficios/{self.beneficio.id}/',
-            {'nome': 'Novo nome'},
+            {'nome': 'Novo nome', 'icone': 'SCHOOL'},
             format='json',
         )
 
         self.assertEqual(response.status_code, 200)
         self.beneficio.refresh_from_db()
         self.assertEqual(self.beneficio.nome, 'Novo nome')
+        self.assertEqual(self.beneficio.icone, 'SCHOOL')
 
     def test_excluir_beneficio_exige_role_admin(self):
         response = self.client.delete(f'/api/beneficios/{self.beneficio.id}/')

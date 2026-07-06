@@ -86,6 +86,9 @@ class Cidadao(BaseSincronizacao):
     email = models.EmailField(unique=True, blank=True, null=True)
     
     naturalidade = models.CharField(max_length=100, blank=True, null=True)
+    ocupacao = models.CharField(max_length=100, blank=True, default='')
+    possui_carteira_trabalho = models.BooleanField(default=False)
+    encaminhamentos = models.TextField(blank=True, default='')
     escolaridade = models.CharField(max_length=100, blank=True, null=True)
     identidade_genero = models.CharField(max_length=50, blank=True, null=True)
     cor = models.CharField(max_length=50, blank=True, null=True)
@@ -264,6 +267,15 @@ class Endereco(BaseSincronizacao):
     )
     abastecimento_agua_outro = models.CharField(max_length=100, blank=True, null=True)
     possui_saneamento = models.BooleanField(null=True, blank=True)
+
+    # --- Situação habitacional (SEMASC) ---
+    iluminacao_publica = models.BooleanField(null=True, blank=True)
+    risco_inundacao = models.BooleanField(default=False)
+    risco_enchente = models.BooleanField(default=False)
+    risco_deslizamento = models.BooleanField(default=False)
+    possui_doc_posse = models.BooleanField(default=False)
+    doc_posse_descricao = models.CharField(max_length=200, blank=True, default='')
+    motivo_terceiros = models.CharField(max_length=300, blank=True, default='')
 
     # --- Geocodificação / Mapa de calor ---
     GEO_STATUS_PENDENTE = 'PENDENTE'
@@ -470,6 +482,7 @@ class Rua(BaseSincronizacao):
 class Socioeconomico(BaseSincronizacao):
     cidadao = models.OneToOneField(Cidadao, on_delete=models.CASCADE, related_name='socioeconomico')
     renda_total = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    faixa_renda = models.CharField(max_length=20, blank=True, default='')
     precedencia_rendimento = models.TextField(blank=True)
     pessoas_com_rendimento = models.IntegerField(default=1)
     recebe_beneficio = models.BooleanField(default=False)
@@ -509,6 +522,7 @@ class TermoResponsabilidade(BaseSincronizacao):
         related_name='termo_responsabilidade',
     )
     nome_responsavel = models.CharField(max_length=200, blank=True, null=True)
+    funcao = models.CharField(max_length=150, blank=True, default='')
     local_termo = models.CharField(max_length=200, blank=True, null=True)
     data_termo = models.CharField(max_length=20, blank=True, null=True)
     hora_termo = models.CharField(max_length=10, blank=True, null=True)
@@ -520,6 +534,7 @@ class TermoResponsabilidade(BaseSincronizacao):
 class Beneficio(BaseSincronizacao):
     nome = models.CharField(max_length=150, unique=True)
     descricao = models.TextField(blank=True, default='')
+    icone = models.CharField(max_length=50, blank=True, default='VOLUNTEER_ACTIVISM')
     ativo = models.BooleanField(default=True)
     atualizado_por = models.ForeignKey(
         User,
@@ -555,6 +570,12 @@ class Beneficiario(BaseSincronizacao):
         default='EM_ANALISE',
         db_index=True,
     )
+    situacao_cadastro = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='EM_ANALISE',
+        db_index=True,
+    )
     valor_recebido = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     data_solicitacao = models.DateField(auto_now_add=True)
     atualizado_por = models.ForeignKey(
@@ -572,3 +593,43 @@ class Beneficiario(BaseSincronizacao):
             models.Index(fields=['cidadao', 'status']),
             models.Index(fields=['atualizado_em'], name='api_benefic_atualiz_0102e4_idx'),
         ]
+
+    def save(self, *args, **kwargs):
+        # Mantém compatibilidade com bancos que ainda exigem essa coluna.
+        self.situacao_cadastro = self.status or 'EM_ANALISE'
+        return super().save(*args, **kwargs)
+
+
+class LocalidadeBeneficiario(models.Model):
+    """Coordenada curada por localidade (bairro/comunidade/distrito) para o
+    mapa de calor. Cada beneficiário herda a coordenada da sua localidade,
+    em vez de geocodificar endereço por endereço (que erra com os nomes
+    informais de Tefé)."""
+
+    FONTE_PENDENTE = 'PENDENTE'
+    FONTE_GOOGLE = 'GOOGLE'
+    FONTE_MANUAL = 'MANUAL'
+    FONTE_CHOICES = [
+        (FONTE_PENDENTE, 'Pendente'),
+        (FONTE_GOOGLE, 'Google (revisar)'),
+        (FONTE_MANUAL, 'Manual'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    nome = models.CharField(max_length=150, unique=True)
+    latitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
+    fonte = models.CharField(max_length=20, choices=FONTE_CHOICES, default=FONTE_PENDENTE)
+    # Diagnóstico do geocode automático (Google), só para apoiar a revisão.
+    google_formatted = models.CharField(max_length=300, blank=True, default='')
+    google_partial = models.BooleanField(default=False)
+    dentro_de_tefe = models.BooleanField(default=False)
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'api_localidade_beneficiario'
+        ordering = ['nome']
+
+    def __str__(self):
+        return self.nome

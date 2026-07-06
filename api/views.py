@@ -14,7 +14,7 @@ from rest_framework.response import Response
 from django.db import transaction
 from django.db.models import Q, Count, Value
 from django.db.models import Prefetch
-from django.db.models.functions import Coalesce, NullIf
+from django.db.models.functions import Coalesce, NullIf, TruncMonth
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
@@ -31,6 +31,7 @@ from .models import (
     Escola,
     LocalTefe,
     Localidade,
+    LocalidadeBeneficiario,
     Rua,
 )
 from .serializers import (
@@ -150,6 +151,12 @@ class CidadaoViewSet(viewsets.ModelViewSet):
             updated_since = _parse_updated_since(self.request)
             if updated_since is not None:
                 queryset = queryset.filter(atualizado_em__gt=updated_since)
+            beneficio_id = self.request.query_params.get('beneficio_id') or self.request.query_params.get('beneficio')
+            sem_beneficio = str(self.request.query_params.get('sem_beneficio', '')).lower() in ('1', 'true', 'sim')
+            if sem_beneficio:
+                queryset = queryset.filter(beneficios_recebidos__isnull=True)
+            elif beneficio_id:
+                queryset = queryset.filter(beneficios_recebidos__beneficio_id=beneficio_id).distinct()
             return queryset.order_by('nome')
 
         queryset = (
@@ -528,10 +535,15 @@ class CidadaoDocumentosView(APIView):
         if erro:
             return Response({'detail': erro}, status=status.HTTP_400_BAD_REQUEST)
 
-        existente = DocumentoAnexo.objects.filter(
-            cidadao=cidadao,
-            tipo_documento=tipo_documento,
-        ).first()
+        permite_multiplos = tipo_documento == DocumentoAnexo.TIPO_FOTO_RESIDENCIA
+        existente = (
+            None
+            if permite_multiplos and not substituir
+            else DocumentoAnexo.objects.filter(
+                cidadao=cidadao,
+                tipo_documento=tipo_documento,
+            ).first()
+        )
 
         if existente and not substituir:
             return Response(
@@ -1274,6 +1286,7 @@ class BeneficiarioViewSet(viewsets.ModelViewSet):
                 cidadao_id=item['cidadao_id'],
                 beneficio_id=item['beneficio_id'],
                 status=item['status'],
+                situacao_cadastro=item['status'],
                 valor_recebido=item['valor_recebido'],
                 atualizado_por=request.user,
                 sincronizado=item['sincronizado'],
@@ -1291,6 +1304,7 @@ class BeneficiarioViewSet(viewsets.ModelViewSet):
                 update_conflicts=True,
                 update_fields=[
                     'status',
+                    'situacao_cadastro',
                     'valor_recebido',
                     'atualizado_por',
                     'sincronizado',
@@ -1400,9 +1414,25 @@ class DashboardStatsView(APIView):
         responses={200: dict},
     )
     def get(self, request):
-        total_cidadaos = Cidadao.objects.count()
-        total_beneficios = Beneficio.objects.count()
-        total_beneficiarios = Beneficiario.objects.count()
+        beneficio_id = request.query_params.get('beneficio_id') or request.query_params.get('beneficio')
+        sem_beneficio = str(request.query_params.get('sem_beneficio', '')).lower() in ('1', 'true', 'sim')
+
+        cidadaos_qs = Cidadao.objects.all()
+        beneficiarios_qs = Beneficiario.objects.all()
+
+        if sem_beneficio:
+            cidadaos_qs = cidadaos_qs.filter(beneficios_recebidos__isnull=True)
+            beneficiarios_qs = beneficiarios_qs.none()
+            total_beneficios = 0
+        elif beneficio_id:
+            cidadaos_qs = cidadaos_qs.filter(beneficios_recebidos__beneficio_id=beneficio_id).distinct()
+            beneficiarios_qs = beneficiarios_qs.filter(beneficio_id=beneficio_id)
+            total_beneficios = 1 if Beneficio.objects.filter(id=beneficio_id).exists() else 0
+        else:
+            total_beneficios = Beneficio.objects.count()
+
+        total_cidadaos = cidadaos_qs.count()
+        total_beneficiarios = beneficiarios_qs.values('cidadao_id').distinct().count()
         inicio_hoje = timezone.localtime(timezone.now()).replace(
             hour=0,
             minute=0,
@@ -1410,41 +1440,52 @@ class DashboardStatsView(APIView):
             microsecond=0,
         )
         fim_hoje = inicio_hoje + timedelta(days=1)
-        atualizados_hoje = Cidadao.objects.filter(
+        atualizados_hoje = cidadaos_qs.filter(
             atualizado_em__gte=inicio_hoje,
             atualizado_em__lt=fim_hoje,
         ).count()
 
-        cidadaos_por_status = Cidadao.objects.values('status_atualizacao').annotate(
+        cidadaos_por_status = cidadaos_qs.values('status_atualizacao').annotate(
+            total=Count('id', distinct=True)
+        )
+
+        cidadaos_por_mes_qs = (
+            cidadaos_qs
+            .annotate(mes_data=TruncMonth('criado_em'))
+            .values('mes_data')
+            .annotate(total=Count('id', distinct=True))
+            .order_by('mes_data')
+        )
+
+        atualizacoes_por_mes_qs = (
+            cidadaos_qs
+            .annotate(mes_data=TruncMonth('atualizado_em'))
+            .values('mes_data')
+            .annotate(total=Count('id', distinct=True))
+            .order_by('mes_data')
+        )
+
+        cidadaos_por_mes = [
+            {'mes': item['mes_data'].strftime('%Y-%m'), 'total': item['total']}
+            for item in cidadaos_por_mes_qs
+            if item['mes_data']
+        ]
+        atualizacoes_por_mes = [
+            {'mes': item['mes_data'].strftime('%Y-%m'), 'total': item['total']}
+            for item in atualizacoes_por_mes_qs
+            if item['mes_data']
+        ]
+
+        beneficios_por_status = beneficiarios_qs.values('status').annotate(
             total=Count('id')
         )
 
-        cidadaos_por_mes = (
-            Cidadao.objects
-            .extra(select={'mes': "to_char(criado_em, 'YYYY-MM')"})
-            .values('mes')
-            .annotate(total=Count('id'))
-            .order_by('mes')
-        )
-
-        atualizacoes_por_mes = (
-            Cidadao.objects
-            .extra(select={'mes': "to_char(atualizado_em, 'YYYY-MM')"})
-            .values('mes')
-            .annotate(total=Count('id'))
-            .order_by('mes')
-        )
-
-        beneficios_por_status = Beneficiario.objects.values('status').annotate(
-            total=Count('id')
-        )
-
-        cidadaos_por_genero = Cidadao.objects.values('identidade_genero').annotate(
-            total=Count('id')
+        cidadaos_por_genero = cidadaos_qs.values('identidade_genero').annotate(
+            total=Count('id', distinct=True)
         )
 
         atualizacao_por_bairro = (
-            Cidadao.objects
+            cidadaos_qs
             .filter(endereco__isnull=False)
             .annotate(
                 bairro_label=Coalesce(
@@ -1456,10 +1497,10 @@ class DashboardStatsView(APIView):
             )
             .values('bairro_label')
             .annotate(
-                total=Count('id'),
-                atualizados=Count('id', filter=Q(status_atualizacao='ATUALIZADO')),
-                pendentes=Count('id', filter=Q(status_atualizacao='PENDENTE')),
-                desatualizados=Count('id', filter=Q(status_atualizacao='DESATUALIZADO')),
+                total=Count('id', distinct=True),
+                atualizados=Count('id', filter=Q(status_atualizacao='ATUALIZADO'), distinct=True),
+                pendentes=Count('id', filter=Q(status_atualizacao='PENDENTE'), distinct=True),
+                desatualizados=Count('id', filter=Q(status_atualizacao='DESATUALIZADO'), distinct=True),
             )
             .order_by('-total')
         )
@@ -1470,8 +1511,8 @@ class DashboardStatsView(APIView):
             'total_beneficiarios': total_beneficiarios,
             'atualizados_hoje': atualizados_hoje,
             'cidadaos_por_status': list(cidadaos_por_status),
-            'cidadaos_por_mes': list(cidadaos_por_mes),
-            'atualizacoes_por_mes': list(atualizacoes_por_mes),
+            'cidadaos_por_mes': cidadaos_por_mes,
+            'atualizacoes_por_mes': atualizacoes_por_mes,
             'beneficios_por_status': list(beneficios_por_status),
             'cidadaos_por_genero': list(cidadaos_por_genero),
             'atualizacao_por_bairro': list(atualizacao_por_bairro),
@@ -1779,3 +1820,121 @@ class EnderecoCoordManualView(APIView):
             'precisao': 'MANUAL',
             'geocodificacao_status': 'OK',
         })
+
+
+class EnderecoReverseGeocodeView(APIView):
+    """POST /api/geocodificacao/reverse/ — dado lat/long, retorna o endereço
+    sugerido pelo Google (reverse geocoding). NÃO salva nada."""
+    permission_classes = [IsAuthenticated, HasRequiredRole]
+    required_role = ADMIN_ROLE
+
+    def post(self, request):
+        from .services.geocoding import reverse_geocode
+
+        try:
+            lat = float(request.data.get('latitude'))
+            lon = float(request.data.get('longitude'))
+        except (TypeError, ValueError):
+            return Response({'detail': 'latitude e longitude válidas são obrigatórias.'}, status=400)
+
+        sugestao = reverse_geocode(lat, lon)
+        if not sugestao:
+            return Response({'detail': 'O Google não retornou endereço para esse ponto.'}, status=404)
+        return Response(sugestao)
+
+
+class EnderecoCamposView(APIView):
+    """PATCH /api/geocodificacao/enderecos/<cidadao_id>/campos/ — atualiza campos
+    de endereço escolhidos (logradouro, numero, bairro, cep, complemento) sem
+    mexer na coordenada nem disparar o reset de geocodificação."""
+    permission_classes = [IsAuthenticated, HasRequiredRole]
+    required_role = ADMIN_ROLE
+
+    CAMPOS_PERMITIDOS = ('logradouro', 'numero', 'bairro', 'cep', 'complemento')
+
+    def patch(self, request, cidadao_id):
+        endereco = get_object_or_404(Endereco, cidadao_id=cidadao_id)
+        campos = {
+            f: (request.data.get(f) or '')
+            for f in self.CAMPOS_PERMITIDOS
+            if f in request.data
+        }
+        if not campos:
+            return Response({'detail': 'Nenhum campo para atualizar.'}, status=400)
+
+        Endereco.objects.filter(pk=endereco.pk).update(**campos)
+        return Response({'atualizados': list(campos.keys()), **campos})
+
+
+# ============================================================
+# Localidades do mapa de calor (coordenada curada por bairro)
+# ============================================================
+
+def _serializar_localidade(loc, total):
+    return {
+        'id': str(loc.id),
+        'nome': loc.nome,
+        'latitude': float(loc.latitude) if loc.latitude is not None else None,
+        'longitude': float(loc.longitude) if loc.longitude is not None else None,
+        'fonte': loc.fonte,
+        'total_beneficiarios': total,
+        'google_formatted': loc.google_formatted,
+        'google_partial': loc.google_partial,
+        'dentro_de_tefe': loc.dentro_de_tefe,
+    }
+
+
+class LocalidadesView(APIView):
+    """GET /api/relatorios/localidades/ — lista as localidades com coordenada e contagem."""
+    permission_classes = [IsAuthenticated, HasRequiredRole]
+    required_role = ADMIN_ROLE
+
+    def get(self, request):
+        from .services.localidades import contagem_por_localidade, sincronizar_localidades
+
+        sincronizar_localidades()
+        contagem = contagem_por_localidade()
+        locs = LocalidadeBeneficiario.objects.all()
+        dados = [_serializar_localidade(loc, contagem.get(loc.nome, 0)) for loc in locs]
+        dados.sort(key=lambda d: (d['latitude'] is not None, -d['total_beneficiarios']))
+        return Response(dados)
+
+
+class LocalidadeDetailView(APIView):
+    """PATCH /api/relatorios/localidades/<id>/ — define a coordenada (manual) e
+    aplica em todos os beneficiários da localidade."""
+    permission_classes = [IsAuthenticated, HasRequiredRole]
+    required_role = ADMIN_ROLE
+
+    def patch(self, request, pk):
+        from .services.localidades import aplicar_coordenada, contagem_por_localidade
+
+        loc = get_object_or_404(LocalidadeBeneficiario, pk=pk)
+        try:
+            lat = float(request.data['latitude'])
+            lon = float(request.data['longitude'])
+        except (KeyError, TypeError, ValueError):
+            return Response({'detail': 'latitude e longitude são obrigatórias.'}, status=400)
+
+        loc.latitude = lat
+        loc.longitude = lon
+        loc.fonte = LocalidadeBeneficiario.FONTE_MANUAL
+        loc.save()
+        aplicados = aplicar_coordenada(loc)
+
+        total = contagem_por_localidade().get(loc.nome, 0)
+        resposta = _serializar_localidade(loc, total)
+        resposta['enderecos_aplicados'] = aplicados
+        return Response(resposta)
+
+
+class LocalidadesAplicarView(APIView):
+    """POST /api/relatorios/localidades/aplicar/ — reaplica todas as coordenadas
+    definidas nos beneficiários (preservando pinos manuais por pessoa)."""
+    permission_classes = [IsAuthenticated, HasRequiredRole]
+    required_role = ADMIN_ROLE
+
+    def post(self, request):
+        from .services.localidades import aplicar_todas
+
+        return Response(aplicar_todas())

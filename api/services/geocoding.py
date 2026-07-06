@@ -217,6 +217,40 @@ def _consultar(query):
     return resultado
 
 
+def reverse_geocode(lat, lon):
+    """Consulta o endereço de uma coordenada (reverse geocoding) no Google.
+    Retorna dict com logradouro/numero/bairro/cep/formatted, ou None."""
+    key = getattr(settings, 'GOOGLE_GEOCODING_API_KEY', '') or ''
+    if not key:
+        return None
+    resp = requests.get(
+        GOOGLE_URL,
+        params={'latlng': f'{lat},{lon}', 'key': key, 'language': 'pt-BR'},
+        timeout=15,
+    )
+    resp.raise_for_status()
+    dados = resp.json()
+    if dados.get('status') != 'OK' or not dados.get('results'):
+        return None
+    res = dados['results'][0]
+    comp = {}
+    for c in res.get('address_components', []):
+        for t in c.get('types', []):
+            comp.setdefault(t, c.get('long_name', ''))
+    return {
+        'logradouro': comp.get('route', ''),
+        'numero': comp.get('street_number', ''),
+        'bairro': (
+            comp.get('sublocality')
+            or comp.get('sublocality_level_1')
+            or comp.get('neighborhood')
+            or ''
+        ),
+        'cep': comp.get('postal_code', ''),
+        'formatted': res.get('formatted_address', ''),
+    }
+
+
 def _persistir(endereco, **campos):
     """Atualiza o registro sem disparar ``save()`` (evita bump de atualizado_em
     e a lógica de reset por mudança de endereço)."""
