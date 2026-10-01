@@ -1104,6 +1104,7 @@ class CidadaoSerializer(SincronizacaoMixin, serializers.ModelSerializer):
             'autorizacao_uso_imagem',
             'autorizacao_uso_imagem_aceite_em',
             'autorizacao_uso_imagem_responsavel',
+            'tempo_residencia',
             'bairro',
             'pretende_voltar_estudar',
             'possui_medida_protetiva',
@@ -1409,7 +1410,9 @@ class CidadaoSerializer(SincronizacaoMixin, serializers.ModelSerializer):
 
 
 class CidadaoListSerializer(serializers.ModelSerializer):
+    documentos = DocumentoSerializer(read_only=True)
     endereco = EnderecoSerializer(read_only=True)
+    atualizado_por_nome = serializers.SerializerMethodField()
     pendente_sincronizacao = serializers.SerializerMethodField()
     nao_sincronizado = serializers.SerializerMethodField()
 
@@ -1426,9 +1429,11 @@ class CidadaoListSerializer(serializers.ModelSerializer):
             'sincronizado',
             'status_sincronizacao',
             'sincronizado_em',
+            'atualizado_por_nome',
             'status_atualizacao',
             'pendente_sincronizacao',
             'nao_sincronizado',
+            'documentos',
             'endereco',
             'criado_em',
             'atualizado_em',
@@ -1441,6 +1446,13 @@ class CidadaoListSerializer(serializers.ModelSerializer):
     @extend_schema_field(OpenApiTypes.BOOL)
     def get_nao_sincronizado(self, obj):
         return obj.status_sincronizacao != 'SINCRONIZADO'
+
+    def get_atualizado_por_nome(self, obj):
+        user = getattr(obj, 'atualizado_por', None)
+        if not user:
+            return None
+        name = user.get_full_name().strip()
+        return name or user.get_username()
 
 
 class BeneficioSerializer(SincronizacaoMixin, serializers.ModelSerializer):

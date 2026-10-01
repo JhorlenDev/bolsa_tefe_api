@@ -7,6 +7,7 @@ import requests
 
 from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
@@ -67,6 +68,12 @@ MAX_DOCUMENT_SIZE_BYTES = 10 * 1024 * 1024
 MAX_DOCUMENTO_PDF_SIZE_BYTES = 25 * 1024 * 1024
 
 
+class CidadaoPagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = 'page_size'
+    max_page_size = 10000
+
+
 def _request_roles(request):
     roles = []
     if getattr(request, 'user', None) and getattr(request.user, 'is_authenticated', False):
@@ -93,8 +100,33 @@ def _parse_updated_since(request):
     return datetime.fromtimestamp(updated_since_ms / 1000, tz=datetime_timezone.utc)
 
 
+def _admin_required_response(request, action_label):
+    if ADMIN_ROLE in _request_roles(request):
+        return None
+    return Response(
+        {'detail': f'Você não tem permissão para {action_label}.'},
+        status=status.HTTP_403_FORBIDDEN,
+    )
+
+
+def _localidade_field(tipo):
+    return {
+        Localidade.TIPO_BAIRRO: 'bairro',
+        Localidade.TIPO_COMUNIDADE: 'comunidade_localidade',
+        Localidade.TIPO_DISTRITO: 'distrito',
+    }.get(tipo)
+
+
+def _enderecos_da_localidade(localidade):
+    campo = _localidade_field(localidade.tipo)
+    if not campo:
+        return Endereco.objects.none()
+    return Endereco.objects.filter(**{campo: localidade.nome})
+
+
 class CidadaoViewSet(viewsets.ModelViewSet):
     serializer_class = CidadaoSerializer
+    pagination_class = CidadaoPagination
     permission_classes = [IsAuthenticated, HasRequiredRole]
     required_role = 'USER-BOLSA-TEFE'
 
@@ -109,45 +141,9 @@ class CidadaoViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         if self.action == 'list':
-            queryset = Cidadao.objects.select_related('endereco').only(
-                'id',
-                'nome',
-                'nis',
-                'data_nascimento',
-                'telefone',
-                'email',
-                'identidade_genero',
-                'sincronizado',
-                'status_sincronizacao',
-                'sincronizado_em',
-                'status_atualizacao',
-                'criado_em',
-                'atualizado_em',
-                'endereco__id',
-                'endereco__tipo_localizacao',
-                'endereco__logradouro',
-                'endereco__bairro',
-                'endereco__distrito',
-                'endereco__comunidade_localidade',
-                'endereco__numero',
-                'endereco__cep',
-                'endereco__complemento',
-                'endereco__situacao_imovel',
-                'endereco__valor_aluguel',
-                'endereco__material_parede',
-                'endereco__qtd_comodos',
-                'endereco__possui_luz',
-                'endereco__possui_asfalto',
-                'endereco__possui_lixo',
-                'endereco__abastecimento_agua',
-                'endereco__abastecimento_agua_outro',
-                'endereco__possui_saneamento',
-                'endereco__sincronizado',
-                'endereco__status_sincronizacao',
-                'endereco__sincronizado_em',
-                'endereco__criado_em',
-                'endereco__atualizado_em',
-            )
+            # A lista serializa o endereço completo. Não use ``only`` aqui:
+            # campos adiados provocam consultas extras por cidadão durante a serialização.
+            queryset = Cidadao.objects.select_related('documentos', 'endereco', 'atualizado_por')
             updated_since = _parse_updated_since(self.request)
             if updated_since is not None:
                 queryset = queryset.filter(atualizado_em__gt=updated_since)
@@ -157,7 +153,7 @@ class CidadaoViewSet(viewsets.ModelViewSet):
                 queryset = queryset.filter(beneficios_recebidos__isnull=True)
             elif beneficio_id:
                 queryset = queryset.filter(beneficios_recebidos__beneficio_id=beneficio_id).distinct()
-            return queryset.order_by('nome')
+            return queryset.order_by('nome', 'id')
 
         queryset = (
             Cidadao.objects
@@ -348,36 +344,96 @@ class LocalidadeViewSet(viewsets.ModelViewSet):
         return queryset
 
     def create(self, request, *args, **kwargs):
-        if ADMIN_ROLE not in _request_roles(request):
-            return Response(
-                {'detail': 'Você não tem permissão para criar localidade.'},
-                status=status.HTTP_403_FORBIDDEN,
-            )
+        forbidden = _admin_required_response(request, 'criar localidade')
+        if forbidden is not None:
+            return forbidden
         return super().create(request, *args, **kwargs)
 
     def update(self, request, *args, **kwargs):
-        if ADMIN_ROLE not in _request_roles(request):
-            return Response(
-                {'detail': 'Você não tem permissão para editar localidade.'},
-                status=status.HTTP_403_FORBIDDEN,
-            )
+        forbidden = _admin_required_response(request, 'editar localidade')
+        if forbidden is not None:
+            return forbidden
         return super().update(request, *args, **kwargs)
 
     def partial_update(self, request, *args, **kwargs):
-        if ADMIN_ROLE not in _request_roles(request):
-            return Response(
-                {'detail': 'Você não tem permissão para editar localidade.'},
-                status=status.HTTP_403_FORBIDDEN,
-            )
+        forbidden = _admin_required_response(request, 'editar localidade')
+        if forbidden is not None:
+            return forbidden
         return super().partial_update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
-        if ADMIN_ROLE not in _request_roles(request):
-            return Response(
-                {'detail': 'Você não tem permissão para excluir localidade.'},
-                status=status.HTTP_403_FORBIDDEN,
-            )
+        forbidden = _admin_required_response(request, 'excluir localidade')
+        if forbidden is not None:
+            return forbidden
         return super().destroy(request, *args, **kwargs)
+
+    @action(detail=True, methods=['post'], url_path='mesclar')
+    def mesclar(self, request, pk=None):
+        forbidden = _admin_required_response(request, 'mesclar localidade')
+        if forbidden is not None:
+            return forbidden
+
+        origem = self.get_object()
+        destino_id = request.data.get('destino_id') or request.data.get('destino')
+        if not destino_id:
+            return Response(
+                {'detail': 'Informe a localidade de destino.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        destino = get_object_or_404(Localidade, pk=destino_id)
+        if origem.pk == destino.pk:
+            return Response(
+                {'detail': 'A origem e o destino devem ser diferentes.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if origem.tipo != destino.tipo:
+            return Response(
+                {'detail': 'Só é possível mesclar localidades do mesmo tipo.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        campo = _localidade_field(origem.tipo)
+        if not campo:
+            return Response(
+                {'detail': 'Tipo de localidade inválido.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            enderecos = list(Endereco.objects.select_for_update().filter(**{campo: origem.nome}))
+            for endereco in enderecos:
+                setattr(endereco, campo, destino.nome)
+                endereco.save()
+
+            ruas_movidas = 0
+            ruas_mescladas = 0
+            ruas_origem = list(Rua.objects.select_for_update().filter(localidade=origem))
+            for rua in ruas_origem:
+                duplicada = Rua.objects.filter(localidade=destino, nome=rua.nome).exclude(pk=rua.pk).first()
+                if duplicada:
+                    rua.delete()
+                    ruas_mescladas += 1
+                    continue
+                rua.localidade = destino
+                rua.save(update_fields=['localidade', 'atualizado_em'])
+                ruas_movidas += 1
+
+            origem_nome = origem.nome
+            origem.delete()
+
+        serializer = self.get_serializer(destino)
+        return Response(
+            {
+                'detail': 'Localidade mesclada com sucesso.',
+                'origem': origem_nome,
+                'destino': serializer.data,
+                'enderecos_atualizados': len(enderecos),
+                'ruas_movidas': ruas_movidas,
+                'ruas_mescladas': ruas_mescladas,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class RuaViewSet(viewsets.ModelViewSet):
@@ -398,36 +454,86 @@ class RuaViewSet(viewsets.ModelViewSet):
         return queryset
 
     def create(self, request, *args, **kwargs):
-        if ADMIN_ROLE not in _request_roles(request):
-            return Response(
-                {'detail': 'Você não tem permissão para criar rua.'},
-                status=status.HTTP_403_FORBIDDEN,
-            )
+        forbidden = _admin_required_response(request, 'criar rua')
+        if forbidden is not None:
+            return forbidden
         return super().create(request, *args, **kwargs)
 
     def update(self, request, *args, **kwargs):
-        if ADMIN_ROLE not in _request_roles(request):
-            return Response(
-                {'detail': 'Você não tem permissão para editar rua.'},
-                status=status.HTTP_403_FORBIDDEN,
-            )
+        forbidden = _admin_required_response(request, 'editar rua')
+        if forbidden is not None:
+            return forbidden
         return super().update(request, *args, **kwargs)
 
     def partial_update(self, request, *args, **kwargs):
-        if ADMIN_ROLE not in _request_roles(request):
-            return Response(
-                {'detail': 'Você não tem permissão para editar rua.'},
-                status=status.HTTP_403_FORBIDDEN,
-            )
+        forbidden = _admin_required_response(request, 'editar rua')
+        if forbidden is not None:
+            return forbidden
         return super().partial_update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
-        if ADMIN_ROLE not in _request_roles(request):
-            return Response(
-                {'detail': 'Você não tem permissão para excluir rua.'},
-                status=status.HTTP_403_FORBIDDEN,
-            )
+        forbidden = _admin_required_response(request, 'excluir rua')
+        if forbidden is not None:
+            return forbidden
         return super().destroy(request, *args, **kwargs)
+
+    @action(detail=True, methods=['post'], url_path='mesclar')
+    def mesclar(self, request, pk=None):
+        forbidden = _admin_required_response(request, 'mesclar rua')
+        if forbidden is not None:
+            return forbidden
+
+        origem = self.get_object()
+        destino_id = request.data.get('destino_id') or request.data.get('destino')
+        if not destino_id:
+            return Response(
+                {'detail': 'Informe a rua de destino.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        destino = get_object_or_404(Rua.objects.select_related('localidade'), pk=destino_id)
+        if origem.pk == destino.pk:
+            return Response(
+                {'detail': 'A origem e o destino devem ser diferentes.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if origem.localidade_id != destino.localidade_id:
+            return Response(
+                {'detail': 'Só é possível mesclar ruas da mesma localidade.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        campo = _localidade_field(origem.localidade.tipo)
+        if not campo:
+            return Response(
+                {'detail': 'Tipo de localidade inválido.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        filtros = {
+            'logradouro': origem.nome,
+            campo: origem.localidade.nome,
+        }
+
+        with transaction.atomic():
+            enderecos = list(Endereco.objects.select_for_update().filter(**filtros))
+            for endereco in enderecos:
+                endereco.logradouro = destino.nome
+                endereco.save()
+
+            origem_nome = origem.nome
+            origem.delete()
+
+        serializer = self.get_serializer(destino)
+        return Response(
+            {
+                'detail': 'Rua mesclada com sucesso.',
+                'origem': origem_nome,
+                'destino': serializer.data,
+                'enderecos_atualizados': len(enderecos),
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 def _request_flag_true(data, *keys):
