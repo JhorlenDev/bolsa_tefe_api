@@ -1775,7 +1775,8 @@ class CidadaoApiTests(BaseApiTestCase):
         response = self.client.get('/api/cidadaos/')
 
         self.assertEqual(response.status_code, 200)
-        item = next(row for row in response.data if row['id'] == str(cidadao.id))
+        self.assertEqual(response.data['count'], 1)
+        item = next(row for row in response.data['results'] if row['id'] == str(cidadao.id))
         self.assertEqual(item['endereco']['tipo_localizacao'], 'RURAL_DISTRITO')
         self.assertEqual(item['endereco']['bairro'], '')
         self.assertEqual(item['endereco']['comunidade_localidade'], 'PORTO PRAIA')
@@ -1834,9 +1835,9 @@ class CidadaoApiTests(BaseApiTestCase):
         response = self.client.get('/api/cidadaos/')
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.data), 2)
+        self.assertEqual(response.data['count'], 2)
 
-        cidadaos_por_nome = {item['nome']: item for item in response.data}
+        cidadaos_por_nome = {item['nome']: item for item in response.data['results']}
 
         self.assertIn(sincronizado.nome, cidadaos_por_nome)
         self.assertIn(pendente.nome, cidadaos_por_nome)
@@ -1850,6 +1851,18 @@ class CidadaoApiTests(BaseApiTestCase):
             cidadaos_por_nome['Bruno Offline']['status_sincronizacao'],
             'PENDENTE',
         )
+
+    def test_lista_cidadaos_pagina_e_respeita_tamanho_solicitado(self):
+        for index in range(25):
+            Cidadao.objects.create(nome=f'Cidadão {index:02d}', telefone=f'9299998{index:04d}')
+
+        response = self.client.get('/api/cidadaos/', {'page': 2, 'page_size': 10})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['count'], 25)
+        self.assertEqual(len(response.data['results']), 10)
+        self.assertIsNotNone(response.data['next'])
+        self.assertIsNotNone(response.data['previous'])
 
     def test_excluir_cidadao_exige_role_admin(self):
         cidadao = Cidadao.objects.create(

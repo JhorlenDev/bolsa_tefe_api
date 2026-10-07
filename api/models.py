@@ -94,6 +94,7 @@ class Cidadao(BaseSincronizacao):
     cor = models.CharField(max_length=50, blank=True, null=True)
     possui_deficiencia = models.BooleanField(default=False)
     estado_civil = models.CharField(max_length=20, choices=ESTADO_CIVIL_CHOICES, blank=True, null=True)
+    tempo_residencia = models.CharField(max_length=100, blank=True, default='', verbose_name='Tempo que reside em Tefé')
     autorizacao_uso_imagem = models.BooleanField(default=False)
     autorizacao_uso_imagem_aceite_em = models.DateTimeField(null=True, blank=True)
     autorizacao_uso_imagem_responsavel = models.CharField(max_length=200, blank=True, null=True)
